@@ -14,7 +14,14 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
+import sys
 from typing import Any, Dict, List
+
+# Ensure /opt/airflow and relative paths are in sys.path
+for p in ["/opt/airflow", os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
 import psycopg2
 from psycopg2.extras import execute_batch, Json
 

@@ -101,15 +101,14 @@ CREATE TABLE IF NOT EXISTS curated.users (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Seed default users:
--- admin: 'admin123' -> $2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQmG6W565v89G2G4332S6 (sample bcrypt hash)
--- viewer: 'viewer123' -> $2b$12$1W3cR.iYjR4x7jN2tJb99u1Y5f83QW.Z41R5k2.wZJ1E5E1vPqYgG
--- Note: FastAPI dynamically updates or inserts these on startup using env vars ADMIN_PASSWORD and VIEWER_PASSWORD.
+-- Seed default users with valid bcrypt hashes
 INSERT INTO curated.users (username, hashed_password, role)
 VALUES 
-    ('admin', '$2b$12$K89U6p/d4Qz0c15N2YwQae3g1Vmsr8a8pM74b.T1v7J8t4PqQ6N7e', 'admin'),
-    ('viewer', '$2b$12$q79M1E7zO3wY2K5t.Z7wSe3h8V1tq9b0mN85c.U2w8K9u5QrR7P8f', 'viewer')
-ON CONFLICT (username) DO NOTHING;
+    ('admin', '$2b$12$/9ym9IeGaCHGnj4Jf32NdO3dokIytjLHBSoBMhIKbtOmtUhQiDeIO', 'admin'),
+    ('viewer', '$2b$12$JL/HAUgiM5BC.Zo8oz9Q6eoYzMyBMD7AqaZTtaRsj8XaAcol5pFCu', 'viewer')
+ON CONFLICT (username) DO UPDATE 
+SET hashed_password = EXCLUDED.hashed_password,
+    role = EXCLUDED.role;
 
 -- 8. Least Privilege Database Roles
 -- Airflow user role (Full CRUD on raw and curated schemas)
@@ -137,7 +136,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA curated GRANT ALL PRIVILEGES ON TABLES TO air
 -- Grant permissions to api_role (STRICTLY READ-ONLY ON CURATED, NO ACCESS TO RAW)
 GRANT USAGE ON SCHEMA curated TO api_role;
 GRANT SELECT ON ALL TABLES IN SCHEMA curated TO api_role;
-GRANT SELECT ON ALL SEQUENCES IN SCHEMA curated TO api_role;
+GRANT SELECT, INSERT, UPDATE ON curated.users TO api_role;
+GRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA curated TO api_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA curated GRANT SELECT ON TABLES TO api_role;
 REVOKE ALL ON SCHEMA raw FROM api_role;
 

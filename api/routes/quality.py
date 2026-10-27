@@ -53,12 +53,12 @@ async def get_pipeline_status(user: Dict[str, Any] = Depends(require_viewer)):
     Returns pipeline health, data freshness, and DAG status summary.
     """
     with get_db_cursor() as cur:
-        # Latest raw ingestion time
-        cur.execute("SELECT MAX(ingested_at) AS last_raw FROM raw.earthquakes;")
-        raw_row = cur.fetchone()
-        last_raw = raw_row["last_raw"] if raw_row and raw_row.get("last_raw") else None
+        # Latest curated ingestion/update time (Platform strictly queries curated schema)
+        cur.execute("SELECT MAX(updated_at) AS last_curated FROM curated.earthquakes;")
+        curated_row = cur.fetchone()
+        last_ingest = curated_row["last_curated"] if curated_row and curated_row.get("last_curated") else None
 
-        # Latest quality score
+        # Latest quality score from quality_metrics
         cur.execute(
             """
             SELECT quality_score, execution_time 
@@ -75,15 +75,15 @@ async def get_pipeline_status(user: Dict[str, Any] = Depends(require_viewer)):
         total_count = cur.fetchone()["total"]
 
     delay_min = None
-    if last_raw:
+    if last_ingest:
         now_utc = datetime.now(timezone.utc)
-        if last_raw.tzinfo is None:
-            last_raw = last_raw.replace(tzinfo=timezone.utc)
-        delay_min = round((now_utc - last_raw).total_seconds() / 60.0, 1)
+        if last_ingest.tzinfo is None:
+            last_ingest = last_ingest.replace(tzinfo=timezone.utc)
+        delay_min = round((now_utc - last_ingest).total_seconds() / 60.0, 1)
 
     return PipelineStatusResponse(
         pipeline_state="HEALTHY" if (delay_min is None or delay_min <= 30.0) else "DEGRADED",
-        last_ingestion_time=last_raw.isoformat() if last_raw else None,
+        last_ingestion_time=last_ingest.isoformat() if last_ingest else None,
         freshness_delay_minutes=delay_min,
         latest_quality_score=quality_score,
         total_curated_events=total_count,
