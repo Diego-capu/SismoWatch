@@ -140,6 +140,39 @@ function formatChatContent(content: string) {
   });
 }
 
+function getMagnitudeBadgeStyle(magnitude: number) {
+  if (magnitude >= 6.5) {
+    return {
+      bg: 'bg-rose-50 text-rose-700 border-rose-200/80 ring-1 ring-rose-400/30',
+      dot: 'bg-rose-500',
+      label: 'Crítico',
+      text: 'text-rose-700',
+    };
+  }
+  if (magnitude >= 5.0) {
+    return {
+      bg: 'bg-orange-50 text-orange-700 border-orange-200/80 ring-1 ring-orange-400/30',
+      dot: 'bg-orange-500',
+      label: 'Severo',
+      text: 'text-orange-700',
+    };
+  }
+  if (magnitude >= 4.0) {
+    return {
+      bg: 'bg-amber-50 text-amber-800 border-amber-200/80 ring-1 ring-amber-400/30',
+      dot: 'bg-amber-500',
+      label: 'Moderado',
+      text: 'text-amber-800',
+    };
+  }
+  return {
+    bg: 'bg-emerald-50 text-emerald-800 border-emerald-200/80 ring-1 ring-emerald-400/30',
+    dot: 'bg-[#134e4a]',
+    label: 'Menor',
+    text: 'text-emerald-800',
+  };
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('sismowatch_user');
@@ -1415,30 +1448,48 @@ export default function App() {
                         </td>
                       </tr>
                     ) : (
-                      paginatedEvents.map(e => (
-                        <tr key={e.id} className="hover:bg-slate-50/70 transition">
-                          <td className="py-2.5 px-3">
-                            <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 font-mono text-xs rounded-full font-bold border border-slate-200/60 inline-block">
-                              M {e.magnitude.toFixed(1)}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 font-semibold text-slate-800">{e.place}</td>
-                          <td className="py-2.5 px-3 text-slate-600">{e.region}</td>
-                          <td className="py-2.5 px-3 text-slate-600 font-mono">{e.depth_km.toFixed(0)} km</td>
-                          <td className="py-2.5 px-3 text-slate-500 font-mono">{e.event_time.replace('T', ' ').slice(0, 19)}</td>
-                          <td className="py-2.5 px-3 text-right">
-                            <a
-                              href={e.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${e.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center space-x-1 text-slate-600 hover:text-slate-900 font-bold text-xs"
-                            >
-                              <span>USGS</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          </td>
-                        </tr>
-                      ))
+                      paginatedEvents.map(e => {
+                        const style = getMagnitudeBadgeStyle(e.magnitude);
+                        return (
+                          <tr key={e.id} className="hover:bg-slate-50/70 transition">
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <div className="inline-flex items-center space-x-2">
+                                <span className={`px-2.5 py-0.5 font-mono text-xs rounded-full font-bold border inline-flex items-center space-x-1.5 shadow-2xs ${style.bg}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+                                  <span>M {e.magnitude.toFixed(1)}</span>
+                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden lg:inline">
+                                  {style.label}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-800">
+                              <div className="flex items-center space-x-2">
+                                <span>{e.place}</span>
+                                {e.tsunami ? (
+                                  <span className="px-1.5 py-0.5 text-[9px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200 rounded tracking-wider">
+                                    TSUNAMI
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">{e.region}</td>
+                            <td className="py-2.5 px-3 text-slate-600 font-mono">{e.depth_km.toFixed(0)} km</td>
+                            <td className="py-2.5 px-3 text-slate-500 font-mono">{e.event_time.replace('T', ' ').slice(0, 19)}</td>
+                            <td className="py-2.5 px-3 text-right">
+                              <a
+                                href={e.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${e.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center space-x-1 text-slate-600 hover:text-slate-900 font-bold text-xs"
+                              >
+                                <span>USGS</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -1599,17 +1650,21 @@ export default function App() {
                         Sismos Destacados del Período
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {rep.notable_events.slice(0, 4).map((nev, nIdx) => (
-                          <div key={nIdx} className="p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs flex items-center justify-between">
-                            <div className="flex items-center space-x-2 truncate">
-                              <span className="px-2 py-0.5 bg-rose-100 text-rose-700 font-black rounded-md font-mono text-[11px]">
-                                M {nev.magnitude}
-                              </span>
-                              <span className="text-slate-800 font-medium truncate">{nev.place}</span>
+                        {rep.notable_events.slice(0, 4).map((nev, nIdx) => {
+                          const nStyle = getMagnitudeBadgeStyle(nev.magnitude);
+                          return (
+                            <div key={nIdx} className="p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs flex items-center justify-between">
+                              <div className="flex items-center space-x-2 truncate">
+                                <span className={`px-2 py-0.5 font-bold rounded-md font-mono text-[11px] border inline-flex items-center space-x-1 ${nStyle.bg}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${nStyle.dot}`} />
+                                  <span>M {nev.magnitude.toFixed(1)}</span>
+                                </span>
+                                <span className="text-slate-800 font-medium truncate">{nev.place}</span>
+                              </div>
+                              <span className="text-slate-400 text-[10px] font-mono flex-shrink-0 ml-2">{nev.event_time}</span>
                             </div>
-                            <span className="text-slate-400 text-[10px] font-mono flex-shrink-0 ml-2">{nev.event_time}</span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
