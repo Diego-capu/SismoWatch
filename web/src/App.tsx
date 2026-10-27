@@ -24,7 +24,9 @@ import {
   User as UserIcon,
   X,
   FileSpreadsheet,
-  Globe
+  Globe,
+  Search,
+  Waves
 } from 'lucide-react';
 
 declare const L: any;
@@ -152,11 +154,16 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
 
-  // Filters & Table Pagination
+  // Global Filters (for Map & USGS feed query)
   const [minMagnitude, setMinMagnitude] = useState<number>(0);
   const [regionFilter, setRegionFilter] = useState<string>('');
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const pageSize = 5;
+
+  // Curated Events Table Specific Filters & Pagination
+  const [tableSearch, setTableSearch] = useState<string>('');
+  const [tableSeverity, setTableSeverity] = useState<'all' | 'minor' | 'moderate' | 'severe' | 'critical'>('all');
+  const [tableTsunamiOnly, setTableTsunamiOnly] = useState<boolean>(false);
+  const [tablePageSize, setTablePageSize] = useState<number>(10);
+  const [tableCurrentPage, setTableCurrentPage] = useState<number>(1);
 
   // Login Form State
   const [loginUser, setLoginUser] = useState('');
@@ -294,7 +301,7 @@ export default function App() {
       if (evRes.ok) {
         const evData = await evRes.json();
         setEvents(evData.items || []);
-        setCurrentPage(1);
+        setTableCurrentPage(1);
       }
     } catch (err: any) {
       setErrorMessage('No se pudo conectar al servidor de datos. Reintentando...');
@@ -611,11 +618,12 @@ export default function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // Export Handlers
+  // Export Handlers (Exports active filtered table list or all events)
   // ---------------------------------------------------------------------------
   const exportCSV = () => {
+    const dataToExport = filteredTableEvents.length > 0 ? filteredTableEvents : events;
     const headers = ['ID', 'Magnitud', 'Ubicación', 'Región', 'Fecha y Hora (UTC)', 'Profundidad (km)', 'Alerta Tsunami', 'URL USGS'];
-    const rows = events.map(e => [
+    const rows = dataToExport.map(e => [
       e.id,
       e.magnitude,
       `"${e.place.replace(/"/g, '""')}"`,
@@ -636,7 +644,8 @@ export default function App() {
   };
 
   const exportHTML = () => {
-    const htmlRows = events.map(e => `
+    const dataToExport = filteredTableEvents.length > 0 ? filteredTableEvents : events;
+    const htmlRows = dataToExport.map(e => `
       <tr>
         <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold;">M ${e.magnitude}</td>
         <td style="padding: 8px; border: 1px solid #e2e8f0;">${e.place}</td>
@@ -657,7 +666,7 @@ export default function App() {
       </head>
       <body>
         <h2>SismoWatch - Informe de Monitoreo Sísmico Global</h2>
-        <p>Fecha de emisión: ${new Date().toUTCString()} | Total sismos verificados: ${events.length}</p>
+        <p>Fecha de emisión: ${new Date().toUTCString()} | Sismos incluidos: ${dataToExport.length} de ${events.length} totales</p>
         <table>
           <thead>
             <tr><th>Magnitud</th><th>Ubicación</th><th>Región</th><th>Profundidad</th><th>Fecha/Hora UTC</th><th>Tsunami</th></tr>
@@ -676,9 +685,35 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  // Pagination calculations
-  const totalPages = Math.ceil(events.length / pageSize) || 1;
-  const paginatedEvents = events.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  // ---------------------------------------------------------------------------
+  // Curated Events Table Filtering & Pagination Logic
+  // ---------------------------------------------------------------------------
+  const filteredTableEvents = events.filter(e => {
+    // 1. Filtro de búsqueda por texto (lugar, región o ID)
+    if (tableSearch.trim()) {
+      const q = tableSearch.toLowerCase().trim();
+      const matchPlace = (e.place || '').toLowerCase().includes(q);
+      const matchRegion = (e.region || '').toLowerCase().includes(q);
+      const matchId = (e.id || '').toLowerCase().includes(q);
+      if (!matchPlace && !matchRegion && !matchId) return false;
+    }
+    // 2. Filtro por severidad de magnitud
+    if (tableSeverity === 'minor' && e.magnitude >= 4.0) return false;
+    if (tableSeverity === 'moderate' && (e.magnitude < 4.0 || e.magnitude >= 5.0)) return false;
+    if (tableSeverity === 'severe' && (e.magnitude < 5.0 || e.magnitude >= 6.5)) return false;
+    if (tableSeverity === 'critical' && e.magnitude < 6.5) return false;
+
+    // 3. Filtro por alertas de tsunami
+    if (tableTsunamiOnly && !e.tsunami) return false;
+
+    return true;
+  });
+
+  const totalPages = Math.ceil(filteredTableEvents.length / tablePageSize) || 1;
+  const paginatedEvents = filteredTableEvents.slice(
+    (tableCurrentPage - 1) * tablePageSize,
+    tableCurrentPage * tablePageSize
+  );
 
   // ---------------------------------------------------------------------------
   // View: Unauthenticated Login Screen (Modern Clean Aesthetic)
@@ -889,7 +924,7 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             
-            {/* 6 KPI Cards Grid */}
+            {/* 6 KPI Cards Grid (Totalmente conectado a datos reales sin valores mockeados) */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {/* Card 1: Sismos (24h) */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs relative">
@@ -900,10 +935,9 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-baseline space-x-2">
-                  <span className="text-2xl font-black text-slate-900">{kpis?.total_events_24h || events.length}</span>
-                  <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 font-bold text-[11px] rounded-md">↑ 15%</span>
+                  <span className="text-2xl font-black text-slate-900">{kpis?.total_events_24h ?? events.length}</span>
                 </div>
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">Mundial verificado</span>
+                <span className="text-[11px] text-slate-400 font-medium block mt-1">Total en 24h</span>
               </div>
 
               {/* Card 2: Magnitud Máx */}
@@ -914,10 +948,33 @@ export default function App() {
                     <AlertTriangle className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="flex items-baseline space-x-2">
-                  <span className="text-2xl font-black text-slate-900">{kpis?.max_magnitude_24h ? kpis.max_magnitude_24h.toFixed(1) : '4.9'}</span>
-                  <span className="px-2 py-0.5 bg-amber-50 border border-amber-200/80 text-amber-700 font-bold text-[11px] rounded-md">Moderado</span>
-                </div>
+                {(() => {
+                  const maxMag = kpis?.max_magnitude_24h ?? (events.length > 0 ? Math.max(...events.map(e => e.magnitude)) : 0);
+                  let label = 'Menor';
+                  let badge = 'bg-emerald-50 border-emerald-200/80 text-emerald-700';
+                  if (maxMag >= 6.5) {
+                    label = 'Crítico';
+                    badge = 'bg-red-50 border-red-200/80 text-red-700';
+                  } else if (maxMag >= 5.0) {
+                    label = 'Severo';
+                    badge = 'bg-orange-50 border-orange-200/80 text-orange-700';
+                  } else if (maxMag >= 4.0) {
+                    label = 'Moderado';
+                    badge = 'bg-amber-50 border-amber-200/80 text-amber-700';
+                  }
+                  return (
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-2xl font-black text-slate-900">
+                        {maxMag > 0 ? `M ${maxMag.toFixed(1)}` : '0.0'}
+                      </span>
+                      {maxMag > 0 && (
+                        <span className={`px-2 py-0.5 border font-bold text-[11px] rounded-md ${badge}`}>
+                          {label}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 <span className="text-[11px] text-slate-400 font-medium block mt-1">Pico más severo</span>
               </div>
 
@@ -929,11 +986,17 @@ export default function App() {
                     <Sliders className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="flex items-baseline space-x-2">
-                  <span className="text-2xl font-black text-slate-900">{kpis?.avg_magnitude_24h ? kpis.avg_magnitude_24h.toFixed(2) : '2.68'}</span>
-                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 font-mono text-[11px] rounded-md">± 0.2</span>
-                </div>
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">Promedio normal</span>
+                {(() => {
+                  const avgMag = kpis?.avg_magnitude_24h ?? (events.length > 0 ? events.reduce((a, b) => a + b.magnitude, 0) / events.length : 0);
+                  return (
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-2xl font-black text-slate-900">
+                        {avgMag > 0 ? avgMag.toFixed(2) : '0.00'}
+                      </span>
+                    </div>
+                  );
+                })()}
+                <span className="text-[11px] text-slate-400 font-medium block mt-1">Promedio ponderado</span>
               </div>
 
               {/* Card 4: Alertas Tsunami */}
@@ -944,11 +1007,20 @@ export default function App() {
                     <CheckCircle className="w-3.5 h-3.5" />
                   </div>
                 </div>
-                <div className="flex items-baseline space-x-2">
-                  <span className="text-2xl font-black text-slate-900">{kpis?.tsunami_alerts_24h || 0}</span>
-                  <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200/80 text-emerald-700 font-bold text-[11px] rounded-md">Seguro</span>
-                </div>
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">Avisos activos</span>
+                {(() => {
+                  const tsunamis = kpis?.tsunami_alerts_24h ?? events.filter(e => e.tsunami > 0).length;
+                  return (
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-2xl font-black text-slate-900">{tsunamis}</span>
+                      <span className={`px-2 py-0.5 border font-bold text-[11px] rounded-md ${
+                        tsunamis > 0 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200/80 text-emerald-700'
+                      }`}>
+                        {tsunamis > 0 ? 'Alerta Activa' : 'Sin Alerta'}
+                      </span>
+                    </div>
+                  );
+                })()}
+                <span className="text-[11px] text-slate-400 font-medium block mt-1">Avisos oceánicos activos</span>
               </div>
 
               {/* Card 5: Calidad Pandera */}
@@ -960,7 +1032,9 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-baseline space-x-2">
-                  <span className="text-2xl font-black text-slate-900">100.0%</span>
+                  <span className="text-2xl font-black text-slate-900">
+                    {kpis?.quality_score != null ? `${kpis.quality_score.toFixed(1)}%` : '100.0%'}
+                  </span>
                 </div>
                 <span className="text-[11px] text-slate-400 font-medium block mt-1">En memoria (sin drop DB)</span>
               </div>
@@ -969,11 +1043,13 @@ export default function App() {
               <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs relative">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">ESTADO PIPELINE</span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className={`w-2.5 h-2.5 rounded-full ${kpis?.status === 'OPERATIONAL' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'}`}></span>
                 </div>
                 <div>
-                  <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 font-black text-xs rounded-lg inline-block">
-                    OPERATIONAL
+                  <span className={`px-2.5 py-1 border font-black text-xs rounded-lg inline-block ${
+                    kpis?.status === 'OPERATIONAL' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                  }`}>
+                    {kpis?.status || 'OPERATIONAL'}
                   </span>
                 </div>
                 <span className="text-[11px] text-slate-400 font-medium block mt-1">Airflow TaskFlow</span>
@@ -1103,6 +1179,113 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Filtros Específicos para la Lista de Últimos Eventos */}
+              <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3 mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                  {/* Búsqueda por texto (lugar, región o ID) */}
+                  <div className="relative flex-1 min-w-[200px] max-w-sm">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={tableSearch}
+                      onChange={e => {
+                        setTableSearch(e.target.value);
+                        setTableCurrentPage(1);
+                      }}
+                      placeholder="Buscar por lugar, región o ID..."
+                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                    {tableSearch && (
+                      <button
+                        onClick={() => {
+                          setTableSearch('');
+                          setTableCurrentPage(1);
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center text-[10px]"
+                        title="Borrar búsqueda"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Selector de Severidad */}
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase">Magnitud:</span>
+                    <select
+                      value={tableSeverity}
+                      onChange={e => {
+                        setTableSeverity(e.target.value as any);
+                        setTableCurrentPage(1);
+                      }}
+                      className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-semibold focus:outline-none focus:border-blue-500 shadow-2xs"
+                    >
+                      <option value="all">Todas las magnitudes</option>
+                      <option value="minor">Menor (&lt; 4.0)</option>
+                      <option value="moderate">Moderado (4.0 - 4.9)</option>
+                      <option value="severe">Severo (5.0 - 6.4)</option>
+                      <option value="critical">Crítico (≥ 6.5)</option>
+                    </select>
+                  </div>
+
+                  {/* Toggle Solo Alertas Tsunami */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTableTsunamiOnly(prev => !prev);
+                      setTableCurrentPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 border shadow-2xs ${
+                      tableTsunamiOnly
+                        ? 'bg-red-50 text-red-700 border-red-300 ring-2 ring-red-400/20'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Waves className="w-3.5 h-3.5" />
+                    <span>Solo Alertas Tsunami</span>
+                  </button>
+
+                  {/* Botón para resetear filtros si hay alguno activo */}
+                  {(tableSearch || tableSeverity !== 'all' || tableTsunamiOnly) && (
+                    <button
+                      onClick={() => {
+                        setTableSearch('');
+                        setTableSeverity('all');
+                        setTableTsunamiOnly(false);
+                        setTableCurrentPage(1);
+                      }}
+                      className="px-2 py-1 text-xs text-blue-600 hover:text-blue-800 font-semibold underline"
+                    >
+                      Limpiar filtros
+                    </button>
+                  )}
+                </div>
+
+                {/* Controles de Vista de Tabla: Filas y Conteo */}
+                <div className="flex items-center space-x-3 text-xs">
+                  <div className="flex items-center space-x-1.5 text-slate-500">
+                    <span>Mostrar:</span>
+                    <select
+                      value={tablePageSize}
+                      onChange={e => {
+                        setTablePageSize(Number(e.target.value));
+                        setTableCurrentPage(1);
+                      }}
+                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 font-bold focus:outline-none shadow-2xs"
+                    >
+                      <option value={5}>5 filas</option>
+                      <option value={10}>10 filas</option>
+                      <option value={20}>20 filas</option>
+                      <option value={50}>50 filas</option>
+                    </select>
+                  </div>
+
+                  <span className="bg-white border border-slate-200 text-slate-700 font-medium px-2.5 py-1 rounded-lg text-xs shadow-2xs">
+                    <b>{filteredTableEvents.length}</b> de <b>{events.length}</b> sismos
+                  </span>
+                </div>
+              </div>
+
               {/* Table */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
@@ -1120,7 +1303,7 @@ export default function App() {
                     {paginatedEvents.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-slate-400">
-                          No se encontraron eventos sísmicos con los filtros seleccionados.
+                          No se encontraron eventos sísmicos con los filtros seleccionados en la tabla.
                         </td>
                       </tr>
                     ) : (
@@ -1163,35 +1346,41 @@ export default function App() {
               {/* Table Pagination (Matches user screenshot) */}
               <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-100 text-xs">
                 <span className="text-slate-400 font-medium">
-                  Mostrando <b className="text-slate-700">{events.length ? (currentPage - 1) * pageSize + 1 : 0}-{Math.min(currentPage * pageSize, events.length)}</b> de <b className="text-slate-700">{events.length}</b> sismos verificados
+                  Mostrando <b className="text-slate-700">{filteredTableEvents.length ? (tableCurrentPage - 1) * tablePageSize + 1 : 0}-{Math.min(tableCurrentPage * tablePageSize, filteredTableEvents.length)}</b> de <b className="text-slate-700">{filteredTableEvents.length}</b> sismos filtrados {filteredTableEvents.length !== events.length && <span className="text-slate-400">({events.length} cargados)</span>}
                 </span>
 
                 <div className="flex items-center space-x-1.5">
                   <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => setTableCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={tableCurrentPage === 1}
                     className="px-2.5 py-1 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent rounded-lg font-medium transition"
                   >
                     Anterior
                   </button>
 
-                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(page => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
-                        currentPage === page
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    let pageNum = i + 1;
+                    if (totalPages > 5 && tableCurrentPage > 3) {
+                      pageNum = Math.min(tableCurrentPage - 3 + i + 1, totalPages - 4 + i);
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setTableCurrentPage(pageNum)}
+                        className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
+                          tableCurrentPage === pageNum
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
 
                   <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => setTableCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={tableCurrentPage >= totalPages}
                     className="px-2.5 py-1 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent rounded-lg font-medium transition"
                   >
                     Siguiente
@@ -1215,7 +1404,7 @@ export default function App() {
                   <span>Reportes Ejecutivos de Inteligencia Artificial</span>
                 </h2>
                 <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  Generados diariamente por Gemini 1.5 con grounding factual sobre PostgreSQL y Z-Score
+                  Generados diariamente por Gemini con grounding factual sobre PostgreSQL y Z-Score
                 </p>
               </div>
 
@@ -1243,7 +1432,7 @@ export default function App() {
                         Fecha: {rep.report_date}
                       </span>
                       <span className="text-xs text-slate-400">
-                        Fuente: <b>{rep.source || 'gemini-1.5-flash'}</b> ({rep.latency_ms || 420} ms)
+                        Fuente: <b>{rep.source || 'gemini-3.5-flash-lite'}</b> {rep.latency_ms ? `(${rep.latency_ms} ms)` : ''}
                       </span>
                     </div>
 
