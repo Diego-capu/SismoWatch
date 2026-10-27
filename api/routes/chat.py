@@ -215,11 +215,11 @@ def generate_smart_fallback_response(query: str, stats: Dict[str, Any]) -> str:
                      f"- **Magnitud:** `M {lead['magnitude']}`",
                      f"- **Profundidad:** {lead['depth_km']} km",
                      f"- **Fecha/Hora:** {lead['time']}",
-                     f"- **Alerta Tsunami:** {'⚠️ SÍ' if lead['tsunami'] else '✅ NO'}"]
+                     f"- **Alerta Tsunami:** {'SÍ' if lead['tsunami'] else 'NO'}"]
             if len(latest_events) > 1:
                 lines.append("\n**Otros sismos recientes inmediatos:**")
                 for ev in latest_events[1:4]:
-                    lines.append(f"• `M {ev['magnitude']}` en {ev['place']} ({ev['time']})")
+                    lines.append(f"- `M {ev['magnitude']}` en {ev['place']} ({ev['time']})")
             return "\n".join(lines)
 
     if any(k in q for k in ["antiguo", "primer sismo", "primero registrado", "inicio de la base"]):
@@ -231,7 +231,7 @@ def generate_smart_fallback_response(query: str, stats: Dict[str, Any]) -> str:
                 f"- **Magnitud:** `M {oldest.get('magnitude')}`\n"
                 f"- **Profundidad:** {oldest.get('depth_km')} km\n"
                 f"- **Fecha y hora:** {oldest.get('time')}\n"
-                f"- **Alerta de tsunami:** {'⚠️ SÍ' if oldest.get('tsunami') else '✅ NO'}\n\n"
+                f"- **Alerta de tsunami:** {'SÍ' if oldest.get('tsunami') else 'NO'}\n\n"
                 f"Este evento corresponde al inicio de la ventana histórica de 30 días ingestada por el pipeline."
             )
 
@@ -243,39 +243,39 @@ def generate_smart_fallback_response(query: str, stats: Dict[str, Any]) -> str:
                      f"- **Ubicación:** {lead['place']} ({lead['region']})",
                      f"- **Profundidad:** {lead['depth_km']} km",
                      f"- **Fecha/Hora:** {lead['time']}",
-                     f"- **Alerta Tsunami:** {'⚠️ SÍ' if lead['tsunami'] else '✅ NO'}"]
+                     f"- **Alerta Tsunami:** {'SÍ' if lead['tsunami'] else 'NO'}"]
             if len(top_events) > 1:
                 lines.append("\n**Otros sismos significativos recientes:**")
                 for ev in top_events[1:4]:
-                    lines.append(f"• `M {ev['magnitude']}` en {ev['place']} ({ev['time']})")
+                    lines.append(f"- `M {ev['magnitude']}` en {ev['place']} ({ev['time']})")
             return "\n".join(lines)
         return "Actualmente no hay sismos registrados en la base de datos curada."
 
     if any(k in q for k in ["tsunami", "tsunamis", "alerta de tsunami", "maremoto"]):
         if tsunamis > 0:
-            return (f"⚠️ **Alerta Sísmica Activa:** Se han registrado **{tsunamis} evento(s)** con indicador de alerta de tsunami en el monitoreo. "
+            return (f"**Alerta Sísmica Activa:** Se han registrado **{tsunamis} evento(s)** con indicador de alerta de tsunami en el monitoreo. "
                     f"Revisa de inmediato la sección del mapa y el panel de control para coordinar acciones con protección civil.")
-        return ("✅ **Estado Seguro:** En este momento **no hay alertas de tsunami activas** en la red de monitoreo mundial de SismoWatch. "
+        return ("**Estado Seguro:** En este momento **no hay alertas de tsunami activas** en la red de monitoreo mundial de SismoWatch. "
                 "Todos los eventos recientes se mantienen por debajo de los umbrales de advertencia oceánica.")
 
     if any(k in q for k in ["anomalia", "anomalía", "z-score", "enjambre", "patrón"]):
         if anomalies:
-            anom_text = "\n".join([f"• **Región {a.get('region', 'N/A')}:** {a.get('event_count', 0)} sismos detectados (Z-score = `{a.get('z_score', 'N/A')}`). Severidad: **{a.get('severity', 'MEDIA')}**." for a in anomalies])
-            return f"📊 **Anomalías estadísticas detectadas por el algoritmo Z-Score:**\n\n{anom_text}\n\nUn Z-Score superior a 2.0 indica un incremento atípico de frecuencia sísmica respecto a la media de los últimos 30 días."
-        return "📊 **Análisis de Anomalías:** El algoritmo Z-Score ha analizado la frecuencia sísmica en las zonas monitorizadas y no detecta enjambres sísmicos anómalos activos en este ciclo."
+            anom_text = "\n".join([f"- **Región {a.get('region', 'N/A')}:** {a.get('event_count', 0)} sismos detectados (Z-score = `{a.get('z_score', 'N/A')}`). Severidad: **{a.get('severity', 'MEDIA')}**." for a in anomalies])
+            return f"**Anomalías estadísticas detectadas por el algoritmo Z-Score:**\n\n{anom_text}\n\nUn Z-Score superior a 2.0 indica un incremento atípico de frecuencia sísmica respecto a la media de los últimos 30 días."
+        return "**Análisis de Anomalías:** El algoritmo Z-Score ha analizado la frecuencia sísmica en las zonas monitorizadas y no detecta enjambres sísmicos anómalos activos en este ciclo."
 
     if any(k in q for k in ["chile", "coquimbo", "alaska", "california", "hawaii", "japon", "japón"]):
         target = [r for r in regions if any(w in r['region'].lower() or w in q for w in ['chile', 'coquimbo', 'ca', 'alaska', 'hawaii'])]
         if target:
             r = target[0]
-            return f"📍 **Actividad en {r['region']}:** Se han procesado **{r['count']} sismos** en esta zona, alcanzando una magnitud máxima de `M {r['max_magnitude']}`. La actividad se mantiene dentro de los parámetros de subducción habituales."
-        return f"📍 No se observan enjambres inusuales en esa región específica dentro de los últimos eventos procesados en la capa curada."
+            return f"**Actividad en {r['region']}:** Se han procesado **{r['count']} sismos** en esta zona, alcanzando una magnitud máxima de `M {r['max_magnitude']}`. La actividad se mantiene dentro de los parámetros de subducción habituales."
+        return f"No se observan enjambres inusuales en esa región específica dentro de los últimos eventos procesados en la capa curada."
 
     if any(k in q for k in ["resumen", "informe", "reporte", "hoy", "general", "situacion", "situación"]):
         summary = stats.get("latest_ai_summary")
         if summary:
-            return f"📋 **Resumen Ejecutivo SismoWatch:**\n\n{summary}\n\n**Métricas Clave:**\n- Total de sismos verificados: `{total}`\n- Magnitud máxima: `M {max_mag}`\n- Magnitud promedio: `M {avg_mag}`\n- Alertas de tsunami: `{tsunamis}`"
-        return (f"📋 **Resumen del Monitoreo Sísmico Global:**\n\n"
+            return f"**Resumen Ejecutivo SismoWatch:**\n\n{summary}\n\n**Métricas Clave:**\n- Total de sismos verificados: `{total}`\n- Magnitud máxima: `M {max_mag}`\n- Magnitud promedio: `M {avg_mag}`\n- Alertas de tsunami: `{tsunamis}`"
+        return (f"**Resumen del Monitoreo Sísmico Global:**\n\n"
                 f"Actualmente la plataforma SismoWatch mantiene **{total} eventos sísmicos** curados y verificados en memoria mediante Pandera.\n"
                 f"- **Magnitud Máxima:** `M {max_mag}`\n"
                 f"- **Magnitud Promedio:** `M {avg_mag}`\n"
