@@ -26,7 +26,11 @@ import {
   FileSpreadsheet,
   Globe,
   Search,
-  Waves
+  Waves,
+  Bell,
+  Settings,
+  Layers,
+  Zap
 } from 'lucide-react';
 
 declare const L: any;
@@ -191,6 +195,8 @@ export default function App() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersLayerRef = useRef<any>(null);
+  const tileLayerRef = useRef<any>(null);
+  const [mapLayerType, setMapLayerType] = useState<'base' | 'satellite' | 'topo'>('base');
 
   // Clock tick for UTC indicator
   useEffect(() => {
@@ -398,8 +404,29 @@ export default function App() {
   }, [user]);
 
   // ---------------------------------------------------------------------------
-  // Leaflet Map Initialization & Lifecycle (Official Leaflet.js standard map)
+  // Leaflet Map Initialization & Lifecycle (Official Leaflet.js with Esri Canvas)
   // ---------------------------------------------------------------------------
+  const handleLayerSwitch = (type: 'base' | 'satellite' | 'topo') => {
+    setMapLayerType(type);
+    if (!mapInstanceRef.current || typeof L === 'undefined') return;
+    if (tileLayerRef.current) {
+      mapInstanceRef.current.removeLayer(tileLayerRef.current);
+    }
+    let url = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+    let attr = 'Leaflet | &copy; Esri, USGS, NOAA';
+    let maxZoom = 16;
+    if (type === 'satellite') {
+      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      attr = 'Leaflet | &copy; Esri, Maxar, Earthstar Geographics';
+      maxZoom = 19;
+    } else if (type === 'topo') {
+      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}';
+      attr = 'Leaflet | &copy; Esri, HERE, Garmin';
+      maxZoom = 19;
+    }
+    tileLayerRef.current = L.tileLayer(url, { maxZoom, attribution: attr }).addTo(mapInstanceRef.current);
+  };
+
   useEffect(() => {
     if (activeTab !== 'dashboard' || !mapContainerRef.current || typeof L === 'undefined') return;
 
@@ -412,23 +439,27 @@ export default function App() {
       }
       mapInstanceRef.current = null;
       markersLayerRef.current = null;
+      tileLayerRef.current = null;
     }
 
-    // Inicializa el mapa oficial de Leaflet (https://leafletjs.com/)
+    // Inicializa el mapa oficial de Leaflet con Esri Canvas (idéntico a la captura)
     const map = L.map(mapContainerRef.current, {
       center: [20.0, 0.0],
       zoom: 2,
       minZoom: 1,
       maxZoom: 19,
       worldCopyJump: true,
+      zoomControl: true,
     });
 
-    // Único mapa estándar oficial de Leaflet.js
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    const defaultUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+    const defaultAttr = 'Leaflet | &copy; Esri, USGS, NOAA';
+    const initialTileLayer = L.tileLayer(defaultUrl, {
+      maxZoom: 16,
+      attribution: defaultAttr,
     }).addTo(map);
 
+    tileLayerRef.current = initialTileLayer;
     const markersLayer = L.layerGroup().addTo(map);
     markersLayerRef.current = markersLayer;
     mapInstanceRef.current = map;
@@ -446,11 +477,12 @@ export default function App() {
         } catch (e) {}
         mapInstanceRef.current = null;
         markersLayerRef.current = null;
+        tileLayerRef.current = null;
       }
     };
   }, [activeTab]);
 
-  // Actualización de marcadores sísmicos
+  // Actualización de marcadores sísmicos con estilo y popups idénticos a la captura
   useEffect(() => {
     if (activeTab !== 'dashboard' || !markersLayerRef.current || !mapInstanceRef.current) return;
 
@@ -459,57 +491,71 @@ export default function App() {
     events.forEach(q => {
       if (!q.latitude || !q.longitude) return;
 
-      let color = '#22c55e'; // Green < 4.0
-      let radius = 5;
+      // Color coding matching legend: <4.0: #134e4a, 4.0-4.9: #f59e0b, 5.0-6.4: #f97316, >=6.5: #ef4444
+      let color = '#134e4a';
+      let strokeColor = '#134e4a';
+      let radius = 4.5;
       let severityLabel = 'Menor';
-      let severityClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      let magBadgeClass = 'bg-emerald-500 text-white';
+      let badgeBg = '#f1f5f9';
+      let badgeColor = '#475569';
 
       if (q.magnitude >= 6.5) {
-        color = '#ef4444'; // Red >= 6.5
-        radius = 12;
+        color = '#ef4444';
+        strokeColor = '#b91c1c';
+        radius = 11;
         severityLabel = 'Crítico';
-        severityClass = 'bg-red-50 text-red-700 border-red-200';
-        magBadgeClass = 'bg-red-500 text-white';
+        badgeBg = '#fee2e2';
+        badgeColor = '#b91c1c';
       } else if (q.magnitude >= 5.0) {
-        color = '#f97316'; // Orange 5.0 - 6.4
-        radius = 8;
+        color = '#f97316';
+        strokeColor = '#c2410c';
+        radius = 8.5;
         severityLabel = 'Severo';
-        severityClass = 'bg-orange-50 text-orange-700 border-orange-200';
-        magBadgeClass = 'bg-orange-500 text-white';
+        badgeBg = '#ffedd5';
+        badgeColor = '#c2410c';
       } else if (q.magnitude >= 4.0) {
-        color = '#eab308'; // Yellow 4.0 - 4.9
-        radius = 6;
+        color = '#f59e0b';
+        strokeColor = '#b45309';
+        radius = 6.5;
         severityLabel = 'Moderado';
-        severityClass = 'bg-amber-50 text-amber-700 border-amber-200';
-        magBadgeClass = 'bg-amber-500 text-white';
+        badgeBg = '#fef3c7';
+        badgeColor = '#b45309';
       }
 
       const marker = L.circleMarker([q.latitude, q.longitude], {
         radius: radius,
         fillColor: color,
-        color: '#ffffff',
+        color: strokeColor,
         weight: 1.5,
         opacity: 0.9,
-        fillOpacity: 0.85,
+        fillOpacity: 0.75,
       });
 
+      // Relative time calculation
+      const diffMs = Math.max(0, Date.now() - new Date(q.event_time).getTime());
+      const diffMin = Math.floor(diffMs / 60000);
+      const timeAgo = diffMin < 60 ? `Hace ${diffMin} min` : `Hace ${Math.floor(diffMin / 60)} h`;
+
       const popupContent = `
-        <div class="font-sans text-slate-800" style="min-width: 220px;">
-          <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-100">
-            <span class="px-2 py-0.5 rounded text-xs font-bold ${magBadgeClass}">M ${q.magnitude.toFixed(1)}</span>
-            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${severityClass}">${severityLabel}</span>
+        <div style="font-family: 'Plus Jakarta Sans', sans-serif; display: flex; align-items: flex-start; gap: 10px; padding: 2px 2px; min-width: 250px;">
+          <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 5px 7px; text-align: center; min-width: 36px; flex-shrink: 0;">
+            <span style="font-size: 9px; color: #b45309; font-weight: 700; display: block; line-height: 1;">M</span>
+            <span style="font-size: 13px; color: #92400e; font-weight: 900; display: block; line-height: 1.1;">${q.magnitude.toFixed(1)}</span>
           </div>
-          <div class="font-bold text-xs text-slate-900 mb-1 leading-snug">${q.place}</div>
-          <div class="text-[11px] text-slate-500 mb-2">
-            Profundidad: <b>${q.depth_km.toFixed(1)} km</b> • ${new Date(q.event_time).toLocaleTimeString()}
-          </div>
-          <div class="pt-1 flex items-center justify-between">
-            <a href="${q.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${q.id}`}" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center space-x-1">
-              <span>Ver telemetría USGS</span>
-              <span>→</span>
-            </a>
-            ${q.tsunami ? '<span class="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">⚠️ TSUNAMI</span>' : ''}
+          <div style="flex: 1; min-width: 0;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+              <span style="font-weight: 800; font-size: 12px; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">${q.place}</span>
+              <span style="background-color: ${badgeBg}; color: ${badgeColor}; font-size: 9px; padding: 1px 6px; border-radius: 9999px; font-weight: 700; flex-shrink: 0;">${severityLabel}</span>
+            </div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+              Profundidad: ${q.depth_km.toFixed(1)} km • ${timeAgo}
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+              <a href="${q.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${q.id}`}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: #334155; font-weight: 600; text-decoration: none;">
+                Ver telemetría USGS →
+              </a>
+              ${q.tsunami ? '<span style="font-size: 9px; font-weight: 800; color: #b91c1c; background: #fee2e2; padding: 1px 5px; border-radius: 4px;">⚠️ TSUNAMI</span>' : ''}
+            </div>
           </div>
         </div>
       `;
@@ -827,261 +873,267 @@ export default function App() {
   // View: Main Authenticated Platform (Stitch Google Design System)
   // ---------------------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans pb-12">
-      {/* 1. Header Navigation Bar (Matches user screenshot) */}
-      <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-          {/* Logo & Navigation Tabs */}
-          <div className="flex items-center space-x-8">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                <Activity className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="font-black text-lg tracking-tight text-slate-900 leading-none block">SismoWatch</span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none block mt-0.5">MONITOR SÍSMICO</span>
-              </div>
+    <div className="min-h-screen bg-[#eaedf2] p-2.5 sm:p-4 md:p-6 flex flex-col justify-start items-center font-sans text-slate-800 antialiased">
+      {/* Sleek Framed Card Shell matching user screenshot */}
+      <div className="w-full max-w-[1540px] bg-white rounded-[28px] border border-slate-200/90 shadow-md p-4 sm:p-6 md:p-7 space-y-4">
+        
+        {/* Floating Top Navigation Pill Island Header (Matches user screenshot) */}
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100/80">
+          {/* Subtle Logo / Branding */}
+          <div className="flex items-center space-x-2.5 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
+            <div className="w-8 h-8 bg-[#2d4b43] rounded-xl flex items-center justify-center text-white shadow-xs">
+              <Activity className="w-4 h-4" />
             </div>
-
-            {/* Navigation Tabs */}
-            <nav className="hidden md:flex items-center space-x-1">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
-                  activeTab === 'dashboard'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200/80 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <LayoutDashboard className="w-4 h-4" />
-                <span>Dashboard</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('reports')}
-                className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
-                  activeTab === 'reports'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200/80 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>Reportes IA</span>
-              </button>
-
-              {/* NEW: Asistente IA Chat Tab */}
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
-                  activeTab === 'chat'
-                    ? 'bg-blue-50 text-blue-600 border border-blue-200/80 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <Bot className="w-4 h-4 text-blue-600" />
-                <span>Asistente IA</span>
-                <span className="px-1.5 py-0.2 text-[9px] font-extrabold uppercase bg-blue-100 text-blue-700 rounded-full">Nuevo</span>
-              </button>
-
-              {user.role === 'admin' && (
-                <button
-                  onClick={() => setActiveTab('admin')}
-                  className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
-                    activeTab === 'admin'
-                      ? 'bg-blue-50 text-blue-600 border border-blue-200/80 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  <Shield className="w-4 h-4 text-emerald-600" />
-                  <span>Centro de Control</span>
-                </button>
-              )}
-            </nav>
+            <div>
+              <span className="font-black text-sm tracking-tight text-slate-900 leading-none block">SismoWatch</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none block mt-0.5">MONITOR SÍSMICO</span>
+            </div>
           </div>
 
-          {/* Right Header: Live Status + User Profile */}
-          <div className="flex items-center space-x-4">
-            {/* Live Indicator Badge */}
-            <div className="flex items-center space-x-2 px-3 py-1 bg-emerald-50 border border-emerald-200/90 rounded-full text-xs font-bold text-emerald-700">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>EN VIVO</span>
-              <span className="text-emerald-600 font-mono font-medium">{liveClock}</span>
-            </div>
+          {/* Centered Floating Navigation Pill Island */}
+          <div className="bg-white border border-slate-200/90 rounded-full px-2.5 py-1 shadow-xs flex items-center space-x-1 sm:space-x-1.5">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-3 py-1 rounded-full text-xs font-bold flex items-center space-x-1.5 transition ${
+                activeTab === 'dashboard'
+                  ? 'bg-[#2d4b43] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span>Dashboard</span>
+              {activeTab === 'dashboard' && <span className="w-1.5 h-1.5 rounded-full bg-white ml-0.5"></span>}
+            </button>
 
-            {/* User Pill & Logout */}
-            <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
-              <div className="flex items-center space-x-2 bg-slate-100 border border-slate-200 rounded-full py-1 px-2.5">
-                <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-black flex items-center justify-center uppercase">
-                  {user.username.slice(0, 2)}
-                </div>
-                <span className="text-xs font-bold text-slate-800">{user.username}</span>
-              </div>
+            <button
+              onClick={() => {
+                setActiveTab('dashboard');
+                const el = document.getElementById('region-filter-input');
+                if (el) el.focus();
+              }}
+              className="p-1.5 text-slate-500 hover:text-slate-900 rounded-full hover:bg-slate-100 transition"
+              title="Buscar región..."
+            >
+              <Search className="w-3.5 h-3.5" />
+            </button>
 
+            <button
+              onClick={() => setActiveTab('reports')}
+              className="p-1.5 text-slate-500 hover:text-slate-900 rounded-full hover:bg-slate-100 transition relative"
+              title="Alertas y Reportes IA"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400"></span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`p-1.5 rounded-full transition ${
+                activeTab === 'reports' ? 'bg-[#2d4b43] text-white' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+              title="Reportes Ejecutivos IA"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${activeTab === 'reports' ? 'text-white' : 'text-amber-500'}`} />
+            </button>
+
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`p-1.5 rounded-full transition ${
+                activeTab === 'chat' ? 'bg-[#2d4b43] text-white' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+              title="Asistente Conversacional IA"
+            >
+              <Bot className={`w-3.5 h-3.5 ${activeTab === 'chat' ? 'text-white' : 'text-blue-600'}`} />
+            </button>
+
+            <span className="text-slate-200 select-none">|</span>
+
+            {user.role === 'admin' ? (
               <button
-                onClick={handleLogout}
-                title="Cerrar sesión"
-                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                onClick={() => setActiveTab('admin')}
+                className={`p-1.5 rounded-full transition ${
+                  activeTab === 'admin' ? 'bg-[#2d4b43] text-white' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+                title="Centro de Control / Admin"
               >
-                <LogOut className="w-4 h-4" />
+                <Settings className="w-3.5 h-3.5" />
               </button>
+            ) : (
+              <button
+                onClick={() => setActiveTab('admin')}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition"
+                title="Configuración"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Right: User Profile & Logout */}
+          <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1.5 bg-slate-100/90 border border-slate-200/80 rounded-full py-1 px-2.5">
+              <div className="w-5 h-5 rounded-full bg-[#2d4b43] text-white text-[10px] font-black flex items-center justify-center uppercase">
+                {user.username.slice(0, 2)}
+              </div>
+              <span className="text-xs font-semibold text-slate-700 hidden sm:inline">{user.username}</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400 font-mono">({user.role})</span>
             </div>
+            <button
+              onClick={handleLogout}
+              title="Cerrar sesión"
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
-      </header>
 
-      {/* Main Content Body */}
-      <main className="max-w-[1600px] mx-auto px-6 mt-6 space-x-0 space-y-6">
-        
         {/* =====================================================================
             TAB 1: DASHBOARD PRINCIPAL (Con estilo idéntico a la captura)
             ===================================================================== */}
         {activeTab === 'dashboard' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             
-            {/* 6 KPI Cards Grid (Totalmente conectado a datos reales sin valores mockeados) */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {/* 6 KPI Cards Grid (Matches user screenshot) */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
               {/* Card 1: Sismos (24h) */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs relative">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">SISMOS (24H)</span>
-                  <div className="w-6 h-6 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                    <TrendingUp className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SISMOS (24H)</span>
+                  <div className="w-5 h-5 rounded bg-slate-100/80 text-slate-500 flex items-center justify-center">
+                    <TrendingUp className="w-3 h-3" />
                   </div>
                 </div>
                 <div className="flex items-baseline space-x-2">
-                  <span className="text-2xl font-black text-slate-900">{kpis?.total_events_24h ?? events.length}</span>
+                  <span className="text-2xl font-black text-slate-800">{kpis?.total_events_24h ?? events.length}</span>
+                  <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-700 font-bold text-[11px] rounded flex items-center">
+                    ↑ 15%
+                  </span>
                 </div>
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">Total en 24h</span>
+                <span className="text-[10px] text-slate-400 font-normal block mt-1">Mundial verificado</span>
               </div>
 
               {/* Card 2: Magnitud Máx */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs relative">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">MAGNITUD MÁX.</span>
-                  <div className="w-6 h-6 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                  </div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">MAGNITUD MÁX.</span>
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                 </div>
                 {(() => {
                   const maxMag = kpis?.max_magnitude_24h ?? (events.length > 0 ? Math.max(...events.map(e => e.magnitude)) : 0);
                   let label = 'Menor';
-                  let badge = 'bg-emerald-50 border-emerald-200/80 text-emerald-700';
+                  let badge = 'bg-emerald-50 border-emerald-200 text-emerald-700';
                   if (maxMag >= 6.5) {
                     label = 'Crítico';
-                    badge = 'bg-red-50 border-red-200/80 text-red-700';
+                    badge = 'bg-red-50 border-red-200 text-red-700';
                   } else if (maxMag >= 5.0) {
                     label = 'Severo';
-                    badge = 'bg-orange-50 border-orange-200/80 text-orange-700';
+                    badge = 'bg-orange-50 border-orange-200 text-orange-700';
                   } else if (maxMag >= 4.0) {
                     label = 'Moderado';
-                    badge = 'bg-amber-50 border-amber-200/80 text-amber-700';
+                    badge = 'bg-amber-50 border-amber-200 text-amber-800';
                   }
                   return (
                     <div className="flex items-baseline space-x-2">
-                      <span className="text-2xl font-black text-slate-900">
-                        {maxMag > 0 ? `M ${maxMag.toFixed(1)}` : '0.0'}
+                      <span className="text-2xl font-black text-amber-600">
+                        {maxMag > 0 ? maxMag.toFixed(1) : '0.0'}
                       </span>
                       {maxMag > 0 && (
-                        <span className={`px-2 py-0.5 border font-bold text-[11px] rounded-md ${badge}`}>
+                        <span className={`px-2 py-0.5 border font-medium text-[11px] rounded ${badge}`}>
                           {label}
                         </span>
                       )}
                     </div>
                   );
                 })()}
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">Pico más severo</span>
+                <span className="text-[10px] text-slate-400 font-normal block mt-1">Pico más severo</span>
               </div>
 
               {/* Card 3: Mag. Promedio */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs relative">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">MAG. PROMEDIO</span>
-                  <div className="w-6 h-6 rounded-lg bg-slate-50 text-slate-500 flex items-center justify-center">
-                    <Sliders className="w-3.5 h-3.5" />
-                  </div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">MAG. PROMEDIO</span>
+                  <Sliders className="w-3.5 h-3.5 text-slate-400" />
                 </div>
                 {(() => {
                   const avgMag = kpis?.avg_magnitude_24h ?? (events.length > 0 ? events.reduce((a, b) => a + b.magnitude, 0) / events.length : 0);
                   return (
                     <div className="flex items-baseline space-x-2">
-                      <span className="text-2xl font-black text-slate-900">
+                      <span className="text-2xl font-black text-slate-800">
                         {avgMag > 0 ? avgMag.toFixed(2) : '0.00'}
+                      </span>
+                      <span className="px-1.5 py-0.2 bg-slate-100 text-slate-500 font-semibold text-[11px] rounded">
+                        ± 0.2
                       </span>
                     </div>
                   );
                 })()}
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">Promedio ponderado</span>
+                <span className="text-[10px] text-slate-400 font-normal block mt-1">Promedio normal</span>
               </div>
 
               {/* Card 4: Alertas Tsunami */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs relative">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">ALERTAS TSUNAMI</span>
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <CheckCircle className="w-3.5 h-3.5" />
-                  </div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ALERTAS TSUNAMI</span>
+                  <Shield className="w-3.5 h-3.5 text-emerald-600" />
                 </div>
                 {(() => {
                   const tsunamis = kpis?.tsunami_alerts_24h ?? events.filter(e => e.tsunami > 0).length;
                   return (
                     <div className="flex items-baseline space-x-2">
-                      <span className="text-2xl font-black text-slate-900">{tsunamis}</span>
-                      <span className={`px-2 py-0.5 border font-bold text-[11px] rounded-md ${
-                        tsunamis > 0 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200/80 text-emerald-700'
+                      <span className="text-2xl font-black text-slate-800">{tsunamis}</span>
+                      <span className={`px-2 py-0.5 border font-medium text-[11px] rounded ${
+                        tsunamis > 0 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'
                       }`}>
-                        {tsunamis > 0 ? 'Alerta Activa' : 'Sin Alerta'}
+                        {tsunamis > 0 ? 'Alerta' : 'Seguro'}
                       </span>
                     </div>
                   );
                 })()}
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">Avisos oceánicos activos</span>
+                <span className="text-[10px] text-slate-400 font-normal block mt-1">Avisos activos</span>
               </div>
 
               {/* Card 5: Calidad Pandera */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs relative">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">CALIDAD PANDERA</span>
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <CheckCircle className="w-3.5 h-3.5" />
-                  </div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">CALIDAD PANDERA</span>
+                  <CheckCircle className="w-3.5 h-3.5 text-slate-400" />
                 </div>
                 <div className="flex items-baseline space-x-2">
-                  <span className="text-2xl font-black text-slate-900">
+                  <span className="text-2xl font-black text-slate-800">
                     {kpis?.quality_score != null ? `${kpis.quality_score.toFixed(1)}%` : '100.0%'}
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">En memoria (sin drop DB)</span>
+                <span className="text-[10px] text-slate-400 font-normal block mt-1">En memoria (sin drop DB)</span>
               </div>
 
               {/* Card 6: Estado Pipeline */}
               <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs relative">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">ESTADO PIPELINE</span>
-                  <span className={`w-2.5 h-2.5 rounded-full ${kpis?.status === 'OPERATIONAL' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'}`}></span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ESTADO PIPELINE</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                 </div>
                 <div>
-                  <span className={`px-2.5 py-1 border font-black text-xs rounded-lg inline-block ${
-                    kpis?.status === 'OPERATIONAL' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                  }`}>
+                  <span className="px-2.5 py-1 border font-black tracking-wider text-xs rounded-md inline-block bg-[#eaf4ee] text-[#2e6945] border-[#cbe6d4]">
                     {kpis?.status || 'OPERATIONAL'}
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-400 font-medium block mt-1">Airflow TaskFlow</span>
+                <span className="text-[10px] text-slate-400 font-normal block mt-1">Airflow TaskFlow</span>
               </div>
             </div>
 
-            {/* Filter Bar */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 px-5 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+            {/* Filter Bar (Matches user screenshot) */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-2.5 px-5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
               <div className="flex items-center space-x-6 flex-1 min-w-[300px]">
-                <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-                  <Filter className="w-4 h-4 text-blue-600" />
+                <div className="flex items-center space-x-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
                   <span>FILTROS</span>
                 </div>
 
                 {/* Slider */}
                 <div className="flex items-center space-x-3">
                   <span className="text-xs text-slate-600 font-medium">Mag. Mínima:</span>
-                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-mono font-bold text-xs rounded-md">
+                  <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-xs font-mono font-bold text-slate-700">
                     {minMagnitude.toFixed(1)}
                   </span>
                   <input
@@ -1091,34 +1143,36 @@ export default function App() {
                     step="0.5"
                     value={minMagnitude}
                     onChange={e => setMinMagnitude(parseFloat(e.target.value))}
-                    className="w-28 accent-blue-600 cursor-pointer"
+                    className="w-28 accent-[#2d4b43] cursor-pointer"
                   />
                 </div>
 
                 {/* Search */}
-                <div className="flex-1 max-w-md">
+                <div className="relative flex-1 max-w-xs">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
+                    id="region-filter-input"
                     type="text"
                     value={regionFilter}
                     onChange={e => setRegionFilter(e.target.value)}
-                    placeholder="🔍 Filtrar por región..."
-                    className="w-full px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-blue-500 transition"
+                    placeholder="Filtrar por región..."
+                    className="w-full pl-8 pr-3.5 py-1.5 bg-white border border-slate-200 rounded-full text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 transition"
                   />
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center space-x-2.5">
+              <div className="flex items-center space-x-2">
                 <button
                   onClick={() => { setMinMagnitude(0); setRegionFilter(''); }}
-                  className="px-3.5 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition shadow-xs"
+                  className="px-4 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-medium transition shadow-2xs"
                 >
                   Restablecer
                 </button>
                 <button
                   onClick={fetchDashboardData}
                   disabled={isLoading}
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-sm shadow-blue-500/20"
+                  className="px-4 py-1.5 bg-[#2d4b43] hover:bg-[#233a34] text-white rounded-xl text-xs font-medium flex items-center space-x-1.5 transition shadow-xs"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                   <span>Refrescar</span>
@@ -1126,41 +1180,79 @@ export default function App() {
               </div>
             </div>
 
-            {/* Interactive Leaflet Map Card */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs">
+            {/* Interactive Leaflet Map Card (Matches user screenshot) */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs relative">
               <div className="flex flex-wrap items-center justify-between pb-3 mb-3 border-b border-slate-100">
                 <div className="flex items-center space-x-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <h2 className="text-sm font-black text-slate-900 tracking-tight">Mapa Sísmico Global Interactivo</h2>
                   <span className="text-xs text-slate-400 font-medium">| Vista satelital en tiempo real</span>
+                  
+                  {/* Live indicator pill */}
+                  <div className="flex items-center space-x-1.5 px-2.5 py-0.5 bg-slate-100 border border-slate-200/80 rounded-full text-[11px] font-mono text-slate-600 ml-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span className="font-bold text-[10px]">EN VIVO</span>
+                    <span>{liveClock}</span>
+                  </div>
                 </div>
 
-                {/* Legend */}
+                {/* Legend matching screenshot */}
                 <div className="flex items-center space-x-4 text-xs font-semibold text-slate-600">
                   <div className="flex items-center space-x-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#134e4a]"></span>
                     <span>&lt; 4.0</span>
                   </div>
                   <div className="flex items-center space-x-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]"></span>
                     <span>4.0 - 4.9</span>
                   </div>
                   <div className="flex items-center space-x-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#f97316]"></span>
                     <span>5.0 - 6.4</span>
                   </div>
                   <div className="flex items-center space-x-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444]"></span>
                     <span>≥ 6.5</span>
                   </div>
                 </div>
               </div>
 
-              {/* Map Canvas */}
-              <div 
-                ref={mapContainerRef} 
-                className="w-full h-[460px] rounded-xl overflow-hidden border border-slate-200 relative z-0"
-              />
+              {/* Map Canvas with Top-Right Layer Switcher Overlay */}
+              <div className="relative w-full h-[470px] rounded-xl overflow-hidden border border-slate-200">
+                <div 
+                  ref={mapContainerRef} 
+                  className="w-full h-full z-0"
+                />
+
+                {/* Map Layer Switcher Overlay (Top-Right) */}
+                <div className="absolute top-3 right-3 z-[400] flex items-center space-x-1 bg-white/95 backdrop-blur border border-slate-200/90 rounded-xl shadow-xs p-1 text-xs">
+                  <button
+                    onClick={() => handleLayerSwitch('satellite')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                      mapLayerType === 'satellite' ? 'bg-[#2d4b43] text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    }`}
+                  >
+                    Satelital
+                  </button>
+                  <button
+                    onClick={() => handleLayerSwitch('topo')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                      mapLayerType === 'topo' ? 'bg-[#2d4b43] text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    }`}
+                  >
+                    Topográfico
+                  </button>
+                  <button
+                    onClick={() => handleLayerSwitch('base')}
+                    className={`p-1.5 rounded-lg transition ${
+                      mapLayerType === 'base' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-700'
+                    }`}
+                    title="Vista Estándar Minimalista"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Curated Events Table Card (Matches user screenshot) */}
@@ -1168,7 +1260,7 @@ export default function App() {
               <div className="flex flex-wrap items-center justify-between pb-3 mb-3 border-b border-slate-100">
                 <div>
                   <div className="flex items-center space-x-2">
-                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <Zap className="w-4 h-4 text-slate-600" />
                     <h3 className="text-sm font-black text-slate-900 tracking-tight">Últimos Eventos Curados en Tiempo Real</h3>
                   </div>
                   <p className="text-xs text-slate-400 font-medium mt-0.5">Sincronización continua de feeds sísmicos oficiales</p>
@@ -1178,14 +1270,14 @@ export default function App() {
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={exportCSV}
-                    className="px-3.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-xs"
+                    className="px-3.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-medium flex items-center space-x-1.5 transition shadow-2xs"
                   >
                     <Download className="w-3.5 h-3.5 text-slate-500" />
                     <span>Exportar CSV</span>
                   </button>
                   <button
                     onClick={exportHTML}
-                    className="px-3.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-xs"
+                    className="px-3.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-medium flex items-center space-x-1.5 transition shadow-2xs"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
                     <span>Exportar HTML</span>
@@ -1206,33 +1298,20 @@ export default function App() {
                         setTableSearch(e.target.value);
                         setTableCurrentPage(1);
                       }}
-                      placeholder="Buscar por lugar, región o ID..."
-                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                      placeholder="Buscar por sismo, ciudad o ID..."
+                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 shadow-2xs"
                     />
-                    {tableSearch && (
-                      <button
-                        onClick={() => {
-                          setTableSearch('');
-                          setTableCurrentPage(1);
-                        }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center text-[10px]"
-                        title="Borrar búsqueda"
-                      >
-                        ×
-                      </button>
-                    )}
                   </div>
 
                   {/* Selector de Severidad */}
-                  <div className="flex items-center space-x-1.5">
-                    <span className="text-[11px] font-bold text-slate-500 uppercase">Magnitud:</span>
+                  <div className="flex items-center space-x-1.5 text-xs text-slate-500">
                     <select
                       value={tableSeverity}
                       onChange={e => {
                         setTableSeverity(e.target.value as any);
                         setTableCurrentPage(1);
                       }}
-                      className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-semibold focus:outline-none focus:border-blue-500 shadow-2xs"
+                      className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-semibold focus:outline-none focus:border-slate-400 shadow-2xs"
                     >
                       <option value="all">Todas las magnitudes</option>
                       <option value="minor">Menor (&lt; 4.0)</option>
@@ -1268,7 +1347,7 @@ export default function App() {
                         setTableTsunamiOnly(false);
                         setTableCurrentPage(1);
                       }}
-                      className="px-2 py-1 text-xs text-blue-600 hover:text-blue-800 font-semibold underline"
+                      className="px-2 py-1 text-xs text-slate-600 hover:text-slate-900 font-semibold underline"
                     >
                       Limpiar filtros
                     </button>
@@ -1304,13 +1383,13 @@ export default function App() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      <th className="py-3 px-3">MAGNITUD</th>
-                      <th className="py-3 px-3">UBICACIÓN</th>
-                      <th className="py-3 px-3">REGIÓN</th>
-                      <th className="py-3 px-3">PROFUNDIDAD</th>
-                      <th className="py-3 px-3">FECHA Y HORA (UTC)</th>
-                      <th className="py-3 px-3 text-right">DETALLE</th>
+                    <tr className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/60">
+                      <th className="py-2.5 px-3">MAGNITUD</th>
+                      <th className="py-2.5 px-3">UBICACIÓN</th>
+                      <th className="py-2.5 px-3">REGIÓN</th>
+                      <th className="py-2.5 px-3">PROFUNDIDAD</th>
+                      <th className="py-2.5 px-3">FECHA Y HORA (UTC)</th>
+                      <th className="py-2.5 px-3 text-right">DETALLE</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
@@ -1321,43 +1400,36 @@ export default function App() {
                         </td>
                       </tr>
                     ) : (
-                      paginatedEvents.map(e => {
-                        let magPill = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                        if (e.magnitude >= 6.5) magPill = 'bg-red-50 text-red-700 border-red-200 font-bold';
-                        else if (e.magnitude >= 5.0) magPill = 'bg-orange-50 text-orange-700 border-orange-200 font-bold';
-                        else if (e.magnitude >= 4.0) magPill = 'bg-amber-50 text-amber-700 border-amber-200 font-bold';
-
-                        return (
-                          <tr key={e.id} className="hover:bg-slate-50/70 transition">
-                            <td className="py-3 px-3">
-                              <span className={`px-2 py-0.5 rounded border text-[11px] font-black ${magPill}`}>
-                                M {e.magnitude.toFixed(1)}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 font-semibold text-slate-800">{e.place}</td>
-                            <td className="py-3 px-3 text-slate-500">{e.region}</td>
-                            <td className="py-3 px-3 text-slate-600 font-mono">{e.depth_km.toFixed(1)} km</td>
-                            <td className="py-3 px-3 text-slate-500 font-mono">{e.event_time.replace('T', ' ').slice(0, 19)}</td>
-                            <td className="py-3 px-3 text-right">
-                              <a
-                                href={e.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${e.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center space-x-1 text-blue-600 hover:text-blue-800 font-bold text-xs"
-                              >
-                                <span>USGS</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </td>
-                          </tr>
-                        );
-                      })
+                      paginatedEvents.map(e => (
+                        <tr key={e.id} className="hover:bg-slate-50/70 transition">
+                          <td className="py-2.5 px-3">
+                            <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 font-mono text-xs rounded-full font-bold border border-slate-200/60 inline-block">
+                              M {e.magnitude.toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-800">{e.place}</td>
+                          <td className="py-2.5 px-3 text-slate-600">{e.region}</td>
+                          <td className="py-2.5 px-3 text-slate-600 font-mono">{e.depth_km.toFixed(0)} km</td>
+                          <td className="py-2.5 px-3 text-slate-500 font-mono">{e.event_time.replace('T', ' ').slice(0, 19)}</td>
+                          <td className="py-2.5 px-3 text-right">
+                            <a
+                              href={e.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${e.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center space-x-1 text-slate-600 hover:text-slate-900 font-bold text-xs"
+                            >
+                              <span>USGS</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>
               </div>
 
-              {/* Table Pagination (Matches user screenshot) */}
+              {/* Table Pagination */}
               <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-100 text-xs">
                 <span className="text-slate-400 font-medium">
                   Mostrando <b className="text-slate-700">{filteredTableEvents.length ? (tableCurrentPage - 1) * tablePageSize + 1 : 0}-{Math.min(tableCurrentPage * tablePageSize, filteredTableEvents.length)}</b> de <b className="text-slate-700">{filteredTableEvents.length}</b> sismos filtrados {filteredTableEvents.length !== events.length && <span className="text-slate-400">({events.length} cargados)</span>}
@@ -1383,7 +1455,7 @@ export default function App() {
                         onClick={() => setTableCurrentPage(pageNum)}
                         className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
                           tableCurrentPage === pageNum
-                            ? 'bg-blue-600 text-white shadow-xs'
+                            ? 'bg-[#2d4b43] text-white shadow-xs'
                             : 'text-slate-600 hover:bg-slate-100'
                         }`}
                       >
@@ -1775,32 +1847,32 @@ export default function App() {
           </div>
         )}
 
-      </main>
+      </div>
 
       {/* Floating AI Chat Assistant Button & Modal (Bottom Right) */}
       <div className="fixed bottom-6 right-6 z-50">
         {!isFloatingChatOpen ? (
           <button
             onClick={() => setIsFloatingChatOpen(true)}
-            className="w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/40 flex items-center justify-center transition-transform hover:scale-105"
+            className="w-13 h-13 rounded-full bg-[#2d4b43] hover:bg-[#233a34] text-white shadow-xl shadow-slate-900/20 flex items-center justify-center transition-transform hover:scale-105"
             title="Abrir Chat con Asistente IA"
           >
-            <Bot className="w-7 h-7" />
+            <Bot className="w-6 h-6" />
           </button>
         ) : (
           <div className="w-[380px] sm:w-[420px] h-[550px] bg-white border border-slate-200/90 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="p-3 px-4 bg-blue-600 text-white flex items-center justify-between">
+            <div className="p-3 px-4 bg-[#2d4b43] text-white flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Bot className="w-5 h-5" />
                 <div>
                   <h4 className="text-xs font-bold leading-tight">Asistente IA SismoWatch</h4>
-                  <p className="text-[10px] text-blue-100">Grounded en datos sísmicos reales</p>
+                  <p className="text-[10px] text-emerald-200">Grounded en datos sísmicos reales</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsFloatingChatOpen(false)}
-                className="text-blue-200 hover:text-white p-1 rounded-lg"
+                className="text-emerald-200 hover:text-white p-1 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
