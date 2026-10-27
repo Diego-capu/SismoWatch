@@ -326,11 +326,43 @@ export default function App() {
         worldCopyJump: true,
       });
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; CartoDB &copy; OpenStreetMap',
-        subdomains: 'abcd',
-        maxZoom: 19,
-      }).addTo(map);
+      const darkLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+          maxZoom: 16,
+        }
+      );
+
+      const streetLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+          maxZoom: 18,
+        }
+      );
+
+      const satelliteLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+          attribution: '&copy; Esri, USGS, NOAA',
+          maxZoom: 18,
+        }
+      );
+
+      // Default layer: Dark Canvas (100% Free, No API Key needed)
+      darkLayer.addTo(map);
+
+      // Add Layer Switcher control
+      L.control.layers(
+        {
+          'Modo Oscuro': darkLayer,
+          'Calles y Países': streetLayer,
+          'Satélite Global': satelliteLayer,
+        },
+        {},
+        { position: 'topright' }
+      ).addTo(map);
 
       markersLayerRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
