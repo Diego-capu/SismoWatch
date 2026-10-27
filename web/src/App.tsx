@@ -326,19 +326,32 @@ export default function App() {
         worldCopyJump: true,
       });
 
-      const darkLayer = L.tileLayer(
+      const cartoApiKey = (import.meta as any).env?.VITE_CARTO_API_KEY || '';
+      const cartoParam = cartoApiKey ? `?api_key=${cartoApiKey}` : '';
+
+      const cartoDarkLayer = L.tileLayer(
+        `https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png${cartoParam}`,
+        {
+          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+          subdomains: 'abcd',
+          maxZoom: 19,
+        }
+      );
+
+      const cartoVoyagerLayer = L.tileLayer(
+        `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${cartoParam}`,
+        {
+          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+          subdomains: 'abcd',
+          maxZoom: 19,
+        }
+      );
+
+      const esriDarkLayer = L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
         {
           attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
           maxZoom: 16,
-        }
-      );
-
-      const streetLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-        {
-          attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
-          maxZoom: 18,
         }
       );
 
@@ -350,15 +363,17 @@ export default function App() {
         }
       );
 
-      // Default layer: Dark Canvas (100% Free, No API Key needed)
-      darkLayer.addTo(map);
+      // Si hay API key de Carto configurada se activa Carto por defecto; de lo contrario Esri
+      const defaultLayer = cartoApiKey ? cartoDarkLayer : esriDarkLayer;
+      defaultLayer.addTo(map);
 
-      // Add Layer Switcher control
+      // Selector de capas interactivo en el mapa
       L.control.layers(
         {
-          'Modo Oscuro': darkLayer,
-          'Calles y Países': streetLayer,
-          'Satélite Global': satelliteLayer,
+          'Carto Dark Matter': cartoDarkLayer,
+          'Carto Voyager (Calles & Color)': cartoVoyagerLayer,
+          'Esri Dark Gray': esriDarkLayer,
+          'Satélite Global (Esri)': satelliteLayer,
         },
         {},
         { position: 'topright' }

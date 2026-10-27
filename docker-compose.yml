@@ -161,6 +161,9 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      args:
+        VITE_CARTO_API_KEY: ${VITE_CARTO_API_KEY:-}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
     container_name: sismowatch-web
     restart: unless-stopped
     ports:
