@@ -9,7 +9,7 @@ import os
 from typing import Any, Dict, Optional
 import jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
@@ -23,7 +23,7 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 class Token(BaseModel):
@@ -122,18 +122,26 @@ def seed_default_users():
         logger.error("Error seeding default users: %s", e)
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
+async def get_current_user(
+    token_header: Optional[str] = Depends(oauth2_scheme),
+    token_query: Optional[str] = Query(None, alias="token"),
+) -> Dict[str, Any]:
     """
-    Validates the JWT token and returns the authenticated user dictionary.
-    Raises 401 Unauthorized if invalid or expired.
+    Validates the JWT token from Authorization header or URL query parameter (for SSE / WebSockets)
+    and returns the authenticated user dictionary.
+    Raises 401 Unauthorized if invalid, missing or expired.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Credenciales de autenticación inválidas o sesión expirada",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    raw_token = token_header or token_query
+    if not raw_token:
+        raise credentials_exception
+
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(raw_token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         role: str = payload.get("role")
         if username is None or role is None:

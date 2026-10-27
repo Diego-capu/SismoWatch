@@ -258,9 +258,10 @@ export default function App() {
     let reconnectTimeout: any = null;
 
     const setupSSE = () => {
-      // In web browsers, native EventSource doesn't send custom headers,
-      // so we use a polling fallback or query token if needed. We implement SSE with reconnect logic:
-      eventSource = new EventSource(`${API_BASE}/api/stream`);
+      // In web browsers, native EventSource cannot set custom headers, so the JWT token
+      // is passed safely via query param ?token=... to authenticate the live stream:
+      const sseUrl = `${API_BASE}/api/stream?token=${encodeURIComponent(user.token)}`;
+      eventSource = new EventSource(sseUrl);
 
       eventSource.onopen = () => {
         setIsLive(true);
