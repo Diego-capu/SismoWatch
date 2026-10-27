@@ -48,6 +48,7 @@ def get_live_seismic_context() -> Dict[str, Any]:
         "avg_magnitude": 0.0,
         "tsunami_alerts": 0,
         "latest_events": [],
+        "oldest_event": {},
         "top_events": [],
         "high_activity_regions": [],
         "latest_ai_summary": "",
@@ -90,6 +91,25 @@ def get_live_seismic_context() -> Dict[str, Any]:
                 }
                 for r in cur.fetchall()
             ]
+
+            # 3. Oldest event (chronologically earliest in 30-day catalog)
+            cur.execute("""
+                SELECT id, magnitude, place, region, depth_km, event_time, tsunami
+                FROM curated.earthquakes
+                ORDER BY event_time ASC
+                LIMIT 1;
+            """)
+            oldest_row = cur.fetchone()
+            if oldest_row:
+                stats["oldest_event"] = {
+                    "id": oldest_row["id"],
+                    "place": oldest_row["place"],
+                    "magnitude": float(oldest_row["magnitude"]),
+                    "region": oldest_row["region"],
+                    "depth_km": float(oldest_row["depth_km"]),
+                    "time": oldest_row["event_time"].strftime("%Y-%m-%d %H:%M:%S UTC") if oldest_row["event_time"] else "N/A",
+                    "tsunami": bool(oldest_row["tsunami"])
+                }
 
             # 3. Top strongest events
             cur.execute("""
@@ -167,6 +187,19 @@ def generate_smart_fallback_response(query: str, stats: Dict[str, Any]) -> str:
                 for ev in latest_events[1:4]:
                     lines.append(f"• `M {ev['magnitude']}` en {ev['place']} ({ev['time']})")
             return "\n".join(lines)
+
+    if any(k in q for k in ["antiguo", "primer sismo", "primero registrado", "inicio de la base"]):
+        oldest = stats.get("oldest_event")
+        if oldest:
+            return (
+                f"**El evento sísmico más antiguo registrado en nuestra base de datos es:**\n\n"
+                f"- **Ubicación:** {oldest.get('place')} ({oldest.get('region')})\n"
+                f"- **Magnitud:** `M {oldest.get('magnitude')}`\n"
+                f"- **Profundidad:** {oldest.get('depth_km')} km\n"
+                f"- **Fecha y hora:** {oldest.get('time')}\n"
+                f"- **Alerta de tsunami:** {'⚠️ SÍ' if oldest.get('tsunami') else '✅ NO'}\n\n"
+                f"Este evento corresponde al inicio de la ventana histórica de 30 días ingestada por el pipeline."
+            )
 
     if any(k in q for k in ["fuerte", "mayor", "maximo", "máximo", "grande", "severo", "potente"]):
         if top_events:
@@ -265,12 +298,15 @@ FACTUAL DATA:
 {json.dumps(stats.get('latest_events', []))}
 - SISMOS HISTÓRICOS DE MAYOR MAGNITUD (ordenados de mayor a menor energía):
 {json.dumps(stats.get('top_events', []))}
+- EVENTO MÁS ANTIGUO REGISTRADO EN BASE DE DATOS (límite inicial de la ventana histórica de 30 días):
+{json.dumps(stats.get('oldest_event', {}))}
 - Regiones con mayor actividad sísmica: {json.dumps(stats.get('high_activity_regions', []))}
 - Último resumen ejecutivo de la IA: {stats.get('latest_ai_summary', '')}
 - Anomalías detectadas: {json.dumps(stats.get('anomalies', []))}
 
 INSTRUCCIONES CLAVE DE RESPUESTA:
 - Si el usuario pregunta por el 'último sismo', 'sismo más reciente' o eventos actuales, responde con el primer elemento de 'ÚLTIMOS SISMOS REGISTRADOS EN TIEMPO REAL'.
+- Si el usuario pregunta por el sismo 'más antiguo', 'primer evento registrado' o el inicio del catálogo histórico, responde con el 'EVENTO MÁS ANTIGUO REGISTRADO EN BASE DE DATOS' citando lugar, magnitud, profundidad, fecha/hora y que marca el inicio de la ventana de 30 días.
 - Si pregunta por el sismo 'más fuerte', 'de mayor magnitud' o 'más potente', usa 'SISMOS HISTÓRICOS DE MAYOR MAGNITUD'.
 - Responde siempre citando ubicación, magnitud, profundidad, fecha/hora y si tiene alerta de tsunami."""
 
