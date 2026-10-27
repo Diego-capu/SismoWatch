@@ -56,3 +56,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Confidential test prompts & PDF specs
+*.pdf
+PROMT.MD
