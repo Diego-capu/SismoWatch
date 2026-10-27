@@ -31,7 +31,8 @@ import {
   Waves,
   Settings,
   Layers,
-  Zap
+  Zap,
+  Trash2
 } from 'lucide-react';
 
 declare const L: any;
@@ -717,6 +718,25 @@ export default function App() {
       setAdminActionStatus(`Error al solicitar reporte: ${err.message}`);
     } finally {
       setIsGeneratingReport(false);
+    }
+  };
+
+  const handleDeleteReport = async (reportId: number) => {
+    if (!user || user.role !== 'admin') return;
+    try {
+      const res = await fetch(`${API_BASE}/api/reports/${reportId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      if (res.ok) {
+        setReports(prev => prev.filter(r => r.id !== reportId));
+        setIsReportActionError(false);
+        setReportActionStatus('Reporte eliminado con éxito.');
+        setTimeout(() => setReportActionStatus(null), 4000);
+      }
+    } catch (e: any) {
+      setIsReportActionError(true);
+      setReportActionStatus(`Error al eliminar reporte: ${e.message}`);
     }
   };
 
@@ -1593,14 +1613,16 @@ export default function App() {
               </div>
             )}
 
-            {reports.length === 0 ? (
+            {reports.filter(r => r.total_events > 0).length === 0 ? (
               <div className="bg-white border border-slate-200/90 rounded-2xl p-12 text-center text-slate-400">
                 No hay reportes de IA generados aún. Dispara una regeneración desde el Centro de Control.
               </div>
             ) : (
-              reports.map(rep => (
+              reports
+                .filter(r => r.total_events > 0)
+                .map(rep => (
                 <div key={rep.id} className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4">
-                  <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 gap-2">
                     <div className="flex items-center space-x-3">
                       <span className="px-3 py-1 bg-blue-50 text-blue-700 font-bold text-xs rounded-lg border border-blue-200">
                         Fecha: {rep.report_date}
@@ -1615,6 +1637,15 @@ export default function App() {
                       <span className="text-amber-600">Magnitud Pico: <b>M {rep.max_magnitude}</b></span>
                       <span className="text-emerald-600">Promedio: <b>M {rep.avg_magnitude}</b></span>
                       <span className="text-red-600">Tsunamis: <b>{rep.tsunami_alerts}</b></span>
+                      {user.role === 'admin' && (
+                        <button
+                          onClick={() => handleDeleteReport(rep.id)}
+                          title="Eliminar reporte"
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition ml-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 

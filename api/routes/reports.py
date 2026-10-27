@@ -91,6 +91,7 @@ async def list_ai_reports(
                 ORDER BY created_at DESC
                 LIMIT 1
             ) l ON true
+            WHERE r.total_events > 0
             ORDER BY r.report_date DESC
             LIMIT %s;
         """
@@ -119,6 +120,20 @@ async def list_ai_reports(
             )
         )
     return result
+
+
+@router.delete("/reports/{report_id}")
+async def delete_ai_report(
+    report_id: int,
+    user: Dict[str, Any] = Depends(require_admin),
+):
+    """
+    Deletes an AI report and its execution logs.
+    """
+    with get_db_cursor() as cur:
+        cur.execute("DELETE FROM curated.ai_execution_logs WHERE report_id = %s;", (report_id,))
+        cur.execute("DELETE FROM curated.ai_reports WHERE id = %s;", (report_id,))
+    return {"status": "success", "message": f"Reporte {report_id} eliminado exitosamente."}
 
 
 @router.get("/reports/export")
