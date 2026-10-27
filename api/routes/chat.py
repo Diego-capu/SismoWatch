@@ -47,6 +47,7 @@ def get_live_seismic_context() -> Dict[str, Any]:
         "max_magnitude": 0.0,
         "avg_magnitude": 0.0,
         "tsunami_alerts": 0,
+        "latest_events": [],
         "top_events": [],
         "high_activity_regions": [],
         "latest_ai_summary": "",
@@ -71,7 +72,26 @@ def get_live_seismic_context() -> Dict[str, Any]:
                 stats["avg_magnitude"] = float(row["avg_mag"])
                 stats["tsunami_alerts"] = int(row["tsunami_count"])
 
-            # 2. Top strongest events
+            # 2. Latest events (chronologically most recent)
+            cur.execute("""
+                SELECT id, magnitude, place, region, depth_km, event_time, tsunami
+                FROM curated.earthquakes
+                ORDER BY event_time DESC
+                LIMIT 10;
+            """)
+            stats["latest_events"] = [
+                {
+                    "place": r["place"],
+                    "magnitude": float(r["magnitude"]),
+                    "region": r["region"],
+                    "depth_km": float(r["depth_km"]),
+                    "time": r["event_time"].strftime("%Y-%m-%d %H:%M:%S UTC") if r["event_time"] else "N/A",
+                    "tsunami": bool(r["tsunami"])
+                }
+                for r in cur.fetchall()
+            ]
+
+            # 3. Top strongest events
             cur.execute("""
                 SELECT id, magnitude, place, region, depth_km, event_time, tsunami
                 FROM curated.earthquakes
@@ -129,8 +149,24 @@ def generate_smart_fallback_response(query: str, stats: Dict[str, Any]) -> str:
     avg_mag = stats.get("avg_magnitude", 0.0)
     tsunamis = stats.get("tsunami_alerts", 0)
     top_events = stats.get("top_events", [])
+    latest_events = stats.get("latest_events", [])
     regions = stats.get("high_activity_regions", [])
     anomalies = stats.get("anomalies", [])
+
+    if any(k in q for k in ["ultimo", "último", "reciente", "recientes"]):
+        if latest_events:
+            lead = latest_events[0]
+            lines = [f"**El sismo más reciente registrado en tiempo real en SismoWatch es:**",
+                     f"- **Ubicación:** {lead['place']} ({lead['region']})",
+                     f"- **Magnitud:** `M {lead['magnitude']}`",
+                     f"- **Profundidad:** {lead['depth_km']} km",
+                     f"- **Fecha/Hora:** {lead['time']}",
+                     f"- **Alerta Tsunami:** {'⚠️ SÍ' if lead['tsunami'] else '✅ NO'}"]
+            if len(latest_events) > 1:
+                lines.append("\n**Otros sismos recientes inmediatos:**")
+                for ev in latest_events[1:4]:
+                    lines.append(f"• `M {ev['magnitude']}` en {ev['place']} ({ev['time']})")
+            return "\n".join(lines)
 
     if any(k in q for k in ["fuerte", "mayor", "maximo", "máximo", "grande", "severo", "potente"]):
         if top_events:
@@ -222,15 +258,21 @@ NUNCA inventes números. Basa tus respuestas en los siguientes datos REALES del 
 
 FACTUAL DATA:
 - Total eventos curados en base de datos: {stats.get('total_events')}
-- Magnitud máxima: {stats.get('max_magnitude')}
+- Magnitud máxima global: {stats.get('max_magnitude')}
 - Magnitud promedio: {stats.get('avg_magnitude')}
 - Alertas de tsunami activas: {stats.get('tsunami_alerts')}
-- Sismos destacados: {json.dumps(stats.get('top_events', []))}
-- Regiones con mayor actividad: {json.dumps(stats.get('high_activity_regions', []))}
+- ÚLTIMOS SISMOS REGISTRADOS EN TIEMPO REAL (ordenados del más reciente al más antiguo):
+{json.dumps(stats.get('latest_events', []))}
+- SISMOS HISTÓRICOS DE MAYOR MAGNITUD (ordenados de mayor a menor energía):
+{json.dumps(stats.get('top_events', []))}
+- Regiones con mayor actividad sísmica: {json.dumps(stats.get('high_activity_regions', []))}
 - Último resumen ejecutivo de la IA: {stats.get('latest_ai_summary', '')}
 - Anomalías detectadas: {json.dumps(stats.get('anomalies', []))}
 
-Si la pregunta del usuario es conceptual (ej. cómo funciona la falla de San Andrés o la escala de Richter), explícala pedagógicamente. Si pregunta por datos o sismos actuales, cita exactamente las cifras de FACTUAL DATA."""
+INSTRUCCIONES CLAVE DE RESPUESTA:
+- Si el usuario pregunta por el 'último sismo', 'sismo más reciente' o eventos actuales, responde con el primer elemento de 'ÚLTIMOS SISMOS REGISTRADOS EN TIEMPO REAL'.
+- Si pregunta por el sismo 'más fuerte', 'de mayor magnitud' o 'más potente', usa 'SISMOS HISTÓRICOS DE MAYOR MAGNITUD'.
+- Responde siempre citando ubicación, magnitud, profundidad, fecha/hora y si tiene alerta de tsunami."""
 
             # Build messages contents
             contents = [

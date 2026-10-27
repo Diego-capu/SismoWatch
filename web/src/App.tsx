@@ -107,6 +107,32 @@ interface ChatMessage {
   source?: string;
 }
 
+function formatChatContent(content: string) {
+  const lines = content.split('\n');
+  return lines.map((line, idx) => {
+    const isBullet = /^\s*[\*\-]\s+/.test(line);
+    const cleanLine = line.replace(/^\s*[\*\-]\s+/, '');
+    const parts = cleanLine.split(/(\*\*.*?\*\*|`.*?`)/g);
+
+    return (
+      <div key={idx} className={`${isBullet ? 'flex items-start space-x-1.5 ml-1.5 my-0.5' : 'my-0.5'}`}>
+        {isBullet && <span className="text-blue-500 font-bold">•</span>}
+        <span>
+          {parts.map((p, pIdx) => {
+            if (p.startsWith('**') && p.endsWith('**')) {
+              return <strong key={pIdx} className="font-bold text-slate-900">{p.slice(2, -2)}</strong>;
+            }
+            if (p.startsWith('`') && p.endsWith('`')) {
+              return <code key={pIdx} className="bg-slate-200/80 text-blue-700 px-1 py-0.5 rounded font-mono text-[11px]">{p.slice(1, -1)}</code>;
+            }
+            return p;
+          })}
+        </span>
+      </div>
+    );
+  });
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('sismowatch_user');
@@ -1317,7 +1343,7 @@ export default function App() {
                       </div>
                     )}
 
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <div>{formatChatContent(msg.content)}</div>
 
                     <div className={`text-[10px] mt-2 text-right ${msg.role === 'user' ? 'text-blue-200' : 'text-slate-400'}`}>
                       {msg.time}
@@ -1341,6 +1367,12 @@ export default function App() {
             {/* Suggested Prompts */}
             <div className="px-6 py-2.5 bg-slate-50/50 border-t border-slate-100 flex items-center space-x-2 overflow-x-auto text-xs">
               <span className="text-[11px] font-bold text-slate-400 uppercase flex-shrink-0">Preguntas sugeridas:</span>
+              <button
+                onClick={() => handleSendChat('¿Cuál fue el último sismo registrado?')}
+                className="px-3 py-1 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-full text-slate-700 font-semibold whitespace-nowrap transition shadow-2xs"
+              >
+                ¿Último sismo registrado?
+              </button>
               <button
                 onClick={() => handleSendChat('¿Cuál ha sido el sismo más potente registrado hoy?')}
                 className="px-3 py-1 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-full text-slate-700 whitespace-nowrap transition"
@@ -1516,7 +1548,7 @@ export default function App() {
                       ? 'bg-blue-600 text-white rounded-br-none'
                       : 'bg-slate-100 text-slate-800 rounded-bl-none'
                   }`}>
-                    <div className="whitespace-pre-wrap">{m.content}</div>
+                    <div>{formatChatContent(m.content)}</div>
                     <div className={`text-[9px] mt-1 text-right ${m.role === 'user' ? 'text-blue-200' : 'text-slate-400'}`}>
                       {m.time}
                     </div>
