@@ -153,6 +153,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState<boolean>(false);
+  const [reportActionStatus, setReportActionStatus] = useState<string | null>(null);
 
   // Global Filters (for Map & USGS feed query)
   const [minMagnitude, setMinMagnitude] = useState<number>(0);
@@ -601,8 +603,10 @@ export default function App() {
   };
 
   const handleRegenerateAIReport = async () => {
-    if (!user || user.role !== 'admin') return;
-    setAdminActionStatus('Solicitando regeneración de reporte IA en Airflow...');
+    if (!user || user.role !== 'admin' || isGeneratingReport) return;
+    setIsGeneratingReport(true);
+    setReportActionStatus('Sintetizando métricas de las últimas 24h y consultando Gemini AI...');
+    setAdminActionStatus('Sintetizando métricas de las últimas 24h y consultando Gemini AI...');
     try {
       const res = await fetch(`${API_BASE}/api/pipeline/regenerate-report`, {
         method: 'POST',
@@ -610,10 +614,20 @@ export default function App() {
         body: JSON.stringify({ force: true }),
       });
       const data = await res.json();
-      setAdminActionStatus(`Reporte IA encolado: DAG Run ID ${data.dag_run_id || 'OK'}`);
-      setTimeout(() => fetchReports(), 4000);
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || 'Error al regenerar reporte');
+      }
+      setReportActionStatus(`✓ ${data.message || 'Reporte IA generado y actualizado con éxito.'}`);
+      setAdminActionStatus(`✓ ${data.message || 'Reporte IA generado con éxito.'}`);
+      await fetchReports();
+      setTimeout(() => {
+        setReportActionStatus(null);
+      }, 8000);
     } catch (err: any) {
-      setAdminActionStatus(`Error al solicitar reporte: ${err.message}`);
+      setReportActionStatus(`✗ Error al regenerar reporte: ${err.message}`);
+      setAdminActionStatus(`✗ Error al solicitar reporte: ${err.message}`);
+    } finally {
+      setIsGeneratingReport(false);
     }
   };
 
@@ -1411,13 +1425,31 @@ export default function App() {
               {user.role === 'admin' && (
                 <button
                   onClick={handleRegenerateAIReport}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-sm"
+                  disabled={isGeneratingReport}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition shadow-sm ${
+                    isGeneratingReport
+                      ? 'bg-blue-400 cursor-not-allowed text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Generar Reporte Hoy</span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingReport ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingReport ? 'Generando con Gemini...' : 'Generar Reporte Hoy'}</span>
                 </button>
               )}
             </div>
+
+            {reportActionStatus && (
+              <div
+                className={`p-3 text-xs rounded-xl flex items-center space-x-2 border transition ${
+                  reportActionStatus.startsWith('✗')
+                    ? 'bg-rose-50 border-rose-200 text-rose-800'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                }`}
+              >
+                <Activity className={`w-4 h-4 flex-shrink-0 ${isGeneratingReport ? 'animate-spin text-blue-600' : 'text-emerald-600'}`} />
+                <span className="font-semibold">{reportActionStatus}</span>
+              </div>
+            )}
 
             {reports.length === 0 ? (
               <div className="bg-white border border-slate-200/90 rounded-2xl p-12 text-center text-slate-400">
@@ -1450,6 +1482,46 @@ export default function App() {
                       {rep.executive_summary}
                     </p>
                   </div>
+
+                  {rep.high_activity_zones && rep.high_activity_zones.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                        Regiones de Mayor Densidad Sísmica (Top 5)
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                        {rep.high_activity_zones.map((zone, zIdx) => (
+                          <div key={zIdx} className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs">
+                            <span className="font-bold text-slate-800 block truncate">{zone.region}</span>
+                            <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                              <span><b>{zone.event_count}</b> sismos</span>
+                              <span className="font-bold text-amber-600">M {zone.max_magnitude}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {rep.notable_events && rep.notable_events.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                        Sismos Destacados del Período
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {rep.notable_events.slice(0, 4).map((nev, nIdx) => (
+                          <div key={nIdx} className="p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs flex items-center justify-between">
+                            <div className="flex items-center space-x-2 truncate">
+                              <span className="px-2 py-0.5 bg-rose-100 text-rose-700 font-black rounded-md font-mono text-[11px]">
+                                M {nev.magnitude}
+                              </span>
+                              <span className="text-slate-800 font-medium truncate">{nev.place}</span>
+                            </div>
+                            <span className="text-slate-400 text-[10px] font-mono flex-shrink-0 ml-2">{nev.event_time}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {rep.anomalies_detected && rep.anomalies_detected.length > 0 && (
                     <div>
@@ -1656,9 +1728,15 @@ export default function App() {
                   </p>
                   <button
                     onClick={handleRegenerateAIReport}
-                    className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-xs"
+                    disabled={isGeneratingReport}
+                    className={`mt-2 px-4 py-2 rounded-xl text-xs font-bold transition shadow-xs flex items-center space-x-1.5 ${
+                      isGeneratingReport
+                        ? 'bg-blue-400 cursor-not-allowed text-white'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }`}
                   >
-                    Regenerar Reporte
+                    <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingReport ? 'animate-spin' : ''}`} />
+                    <span>{isGeneratingReport ? 'Generando con Gemini...' : 'Regenerar Reporte'}</span>
                   </button>
                 </div>
               </div>

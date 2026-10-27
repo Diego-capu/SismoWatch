@@ -10,6 +10,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: 1
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
     AIRFLOW__WEBSERVER__RBAC: 'true'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     PYTHONPATH: /opt/airflow
     _PIP_ADDITIONAL_REQUIREMENTS: 'pandera[pandas]==0.20.4 requests psycopg2-binary pydantic httpx openai numpy scipy'
     POSTGRES_HOST: postgres

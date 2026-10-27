@@ -80,9 +80,12 @@ def test_viewer_access_to_admin_endpoints_is_forbidden_403(client, viewer_token)
         assert res1.status_code == 403
         assert "requiere permisos de Administrador" in res1.json()["detail"]
 
-        # 2. Report regenerate endpoint
+        # 2. Report regenerate endpoints
         res2 = client.post("/api/admin/reports/regenerate", headers=headers, json={"force": True})
         assert res2.status_code == 403
+
+        res2_pipe = client.post("/api/pipeline/regenerate-report", headers=headers, json={"force": True})
+        assert res2_pipe.status_code == 403
 
         # 3. Quality quarantine audit endpoint
         res3 = client.get("/api/quality/quarantine", headers=headers)
@@ -148,4 +151,39 @@ def test_chat_endpoint_grounded_response(client, viewer_token):
         assert "reply" in data
         assert "6.8" in data["reply"]
         assert "source" in data
+
+
+def test_admin_regenerate_report_endpoint(client, admin_token):
+    fake_admin = {"id": 1, "username": "admin", "role": "admin"}
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    mock_report = {
+        "id": 10,
+        "report_date": "2026-10-27",
+        "total_events": 50,
+        "max_magnitude": 5.4,
+        "avg_magnitude": 2.39,
+        "tsunami_alerts": 0,
+        "source": "gemini (gemini-3.5-flash-lite)",
+        "latency_ms": 1200,
+        "executive_summary": "Resumen factual generado.",
+        "anomalies_count": 2,
+    }
+
+    with patch("auth.get_user_by_username", return_value=fake_admin), \
+         patch("routes.reports.generate_and_persist_ai_report_direct_async", return_value=mock_report):
+        # Test pipeline alias
+        resp = client.post("/api/pipeline/regenerate-report", json={"force": True}, headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "SUCCESS"
+        assert data["report"]["total_events"] == 50
+        assert data["report"]["max_magnitude"] == 5.4
+
+        # Test admin alias
+        resp_admin = client.post("/api/admin/reports/regenerate", json={"force": True}, headers=headers)
+        assert resp_admin.status_code == 200
+        data_admin = resp_admin.json()
+        assert data_admin["status"] == "SUCCESS"
+
 
