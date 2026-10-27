@@ -72,15 +72,17 @@ flowchart TD
         API_AUTH["Autenticación JWT & RBAC<br/>(Viewer / Admin)"]
         API_EVENTS["/api/kpis, /api/events, /api/stats"]
         API_STREAM["/api/stream (SSE Live Stream)"]
-        API_REPORTS["/api/reports, /api/reports/export"]
+        API_CHAT["/api/chat (Asistente IA Grounded)"]
+        API_REPORTS["/api/reports, /api/reports/export, DELETE /api/reports/{id}"]
         API_ADMIN["/api/admin/backfill, /api/quality/quarantine"]
     end
 
     subgraph Frontend ["5. Plataforma de Consumo (React + Vite)"]
-        UI_DASH["Dashboard KPIs & Mapa Interactivo Leaflet"]
+        UI_DASH["Dashboard Ejecutivo (6 KPIs & Mapa Leaflet OSM)"]
         UI_LIVE["Indicador En Vivo (SSE Realtime)"]
         UI_AI["Visor de Reportes IA & Anomalías"]
-        UI_ADMIN["Consola de Administración & Auditoría"]
+        UI_CHAT["Asistente IA Conversacional"]
+        UI_ADMIN["Centro de Control & Auditoría Pandera"]
     end
 
     USGS_RT --> T_EXTRACT
@@ -98,6 +100,7 @@ flowchart TD
     T_PERSIST_AI --> CUR_LOG
 
     CUR_EQ --> API_EVENTS
+    CUR_EQ --> API_CHAT
     CUR_QM --> API_ADMIN
     CUR_REP --> API_REPORTS
     CUR_LOG --> API_REPORTS
@@ -106,6 +109,7 @@ flowchart TD
     API_EVENTS --> UI_DASH
     API_STREAM --> UI_LIVE
     API_REPORTS --> UI_AI
+    API_CHAT --> UI_CHAT
     API_ADMIN --> UI_ADMIN
 ```
 

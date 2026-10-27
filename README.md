@@ -1,10 +1,11 @@
-# SismoWatch 🌍
+# SismoWatch
 **Plataforma Integral de Monitoreo Sísmico Global, Control de Calidad en Memoria y Análisis Ejecutivo con IA**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![Apache Airflow 2.10](https://img.shields.io/badge/Airflow-2.10.2-teal.svg)](https://airflow.apache.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-1.0.0-009688.svg)](https://fastapi.tiangolo.com/)
 [![React + Vite](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61dafb.svg)](https://vitejs.dev/)
+[![Leaflet](https://img.shields.io/badge/Map-Leaflet.js%20(OSM)-green.svg)](https://leafletjs.com/)
 [![Pandera Data Quality](https://img.shields.io/badge/Quality-Pandera-orange.svg)](https://pandera.readthedocs.io/)
 [![Security Scan: Bandit](https://img.shields.io/badge/Security-Bandit%20Passed-brightgreen.svg)](https://bandit.readthedocs.io/)
 
@@ -12,7 +13,7 @@ SismoWatch transforma el feed público y efímero del **Servicio Geológico de E
 
 ---
 
-## 📑 Tabla de Contenidos
+## Tabla de Contenidos
 1. [Puesta en Marcha Rápida (Un Solo Comando)](#1-puesta-en-marcha-rápida-un-solo-comando)
 2. [Arquitectura y Propósito del Sistema](#2-arquitectura-y-propósito-del-sistema)
 3. [Restricción de Negocio y Decisión de Calidad de Datos](#3-restricción-de-negocio-y-decisión-de-calidad-de-datos)
@@ -135,9 +136,20 @@ Cualquier región con $Z \ge 2.0$ es clasificada como anomalía estadística (`M
 
 ## 6. Plataforma de Consumo y Tiempo Real
 
-- **Frontend:** Construido con React 18, Vite, TypeScript y Tailwind CSS.
-- **Tiempo Real (Server-Sent Events / SSE):** Endpoint `/api/stream` que emite sismos nuevos y *heartbeats* en vivo. La interfaz cuenta con un indicador "EN VIVO" con reconexión automática y tolerancia a fallos.
-- **Mapa Sísmico Interactivo (Leaflet):** Marcadores geográficos codificados por color según magnitud (verde $< 4.0$, amarillo $4.0-4.9$, naranja $5.0-6.4$, rojo $\ge 6.5$) con popups informativos y enlaces al portal oficial de USGS.
+- **Frontend Ejecutivo:** Construido con React 18, Vite, TypeScript y Tailwind CSS, implementando un diseño minimalista con tarjetas de bordes suaves y elevación sutil.
+- **Métricas KPI en Vivo (6 Tarjetas):** Monitorea de forma continua `Sismos (24h)` con indicador de tendencia porcentual, `Magnitud Máx.`, `Magnitud Promedio`, `Alertas Tsunami`, `Calidad Pandera` y `Estado del Pipeline`.
+- **Mapa Oficial Leaflet (OpenStreetMap):** Integración directa con el proveedor oficial de [Leaflet.js](https://leafletjs.com/) (`https://tile.openstreetmap.org`) como capa base predeterminada, complementado con un selector multicapa interactivo en la esquina superior derecha (`Leaflet OSM`, `Satelital`, `Topográfico` y `Minimalista`).
+- **Codificación Semántica de Magnitudes:** La lista de eventos curados y la sección de sismos destacados incorporan insignias coloreadas con punto indicador alineadas 1:1 con la leyenda del mapa:
+  - `< 4.0` (Menor): Verde azulado / Teal (`#134e4a`).
+  - `4.0 - 4.9` (Moderado): Ámbar (`#f59e0b`).
+  - `5.0 - 6.4` (Severo): Naranja (`#f97316`).
+  - `>= 6.5` (Crítico): Rojo / Rosa (`#ef4444`).
+  - Distintivo `TSUNAMI` de alta visibilidad para eventos con riesgo oceánico activo.
+- **Barra de Navegación Flotante y Menú de Usuario:** Cabecera limpia y centrada con accesos directos (`Dashboard`, `Reportes IA`, `Asistente IA`, `Centro de Control`) y popover interactivo en la tuerca (`Settings`) que exhibe el rol del usuario autenticado y botón para cierre de sesión seguro.
+- **Asistente IA Conversacional:** Módulo de chat interactivo respaldado por el endpoint `/api/chat` con anclaje factual estricto sobre los eventos curados en memoria.
+- **Gestión y Depuración de Reportes:** Filtrado automático para excluir reportes vacíos o mocks, y endpoint administrativo `DELETE /api/reports/{id}` con botón de eliminación (`Trash2`).
+- **Diseño 100% Libre de Emojis:** Interfaz y respuestas técnicas formateadas exclusivamente con iconos vectoriales SVG de Lucide.
+- **Tiempo Real (Server-Sent Events / SSE):** Endpoint `/api/stream` que emite sismos nuevos y *heartbeats* en vivo con reconexión automática y tolerancia a fallos.
 - **Exportación:** Descarga de reportes y eventos en formatos CSV y HTML responsivo.
 
 ---
@@ -156,11 +168,11 @@ pytest -v tests/
 - **`tests/test_transformations.py`:** Validación de normalización GeoJSON, extracción de coordenadas, deducción de regiones y sanitización contra prompt injection.
 - **`tests/test_quality.py`:** Pruebas del motor Pandera (casos válidos, coordenadas fuera de rango, IDs nulos, cálculo de score y compuerta bloqueante).
 - **`tests/test_dag_integrity.py`:** Verificación de importación de DAGs de Airflow (`usgs_pipeline_dag` y `daily_ai_report_dag`) sin ciclos ni errores de sintaxis.
-- **`tests/test_api.py`:** Pruebas de API REST, autenticación JWT, emisión de tokens, verificación de rechazo 401 sin sesión, y verificación de `403 Forbidden` para rol `viewer` en rutas administrativas.
+- **`tests/test_api.py`:** Pruebas de API REST, salud del sistema, autenticación JWT, emisión de tokens, rechazo 401 sin sesión, y verificación de `403 Forbidden` para rol `viewer` en rutas administrativas (`/api/admin/backfill`, `/api/admin/reports/regenerate`, `/api/quality/quarantine`).
 
 **Resultado de la ejecución:**
 ```text
-======================== 19 passed, 5 warnings in 1.64s ========================
+======================== 21 passed, 5 warnings in 1.93s ========================
 ```
 
 ---
@@ -211,7 +223,7 @@ Files skipped (0):
 | **Frontend Web** | `http://localhost:3000` | Consola interactiva de SismoWatch |
 | **Backend API** | `http://localhost:8000/docs` | Documentación interactiva Swagger UI |
 | **Airflow Webserver** | `http://localhost:8080` | Interfaz de orquestación de DAGs |
-| **PostgreSQL** | `localhost:5433` (mapeado a 5432) | Base de datos analítica |
+| **PostgreSQL** | `localhost:5435` (mapeado a 5432) | Base de datos analítica |
 
 ### Usuarios Preconfigurados
 | Rol | Usuario | Contraseña | Permisos |
