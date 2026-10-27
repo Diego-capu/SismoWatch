@@ -21,7 +21,7 @@ x-airflow-common: &airflow-common
     GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-    AI_MODEL_NAME: ${AI_MODEL_NAME:-gemini-1.5-flash}
+    AI_MODEL_NAME: ${AI_MODEL_NAME:-gemini-3.5-flash-lite}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/include:/opt/airflow/include
@@ -139,7 +139,7 @@ services:
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-sismowatch_admin}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-AirflowAdmin2026!Secure}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      AI_MODEL_NAME: ${AI_MODEL_NAME:-gemini-1.5-flash}
+      AI_MODEL_NAME: ${AI_MODEL_NAME:-gemini-3.5-flash-lite}
     volumes:
       - ./api:/app
     ports:

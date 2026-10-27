@@ -328,7 +328,8 @@ def generate_ai_report(
     if provider == "gemini" and gemini_key:
         try:
             import httpx
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+            candidate_models = ["gemini-3.5-flash-lite", "gemini-3.8-flash"]
+
             payload = {
                 "contents": [
                     {
@@ -341,23 +342,30 @@ def generate_ai_report(
                     "responseMimeType": "application/json"
                 }
             }
-            with httpx.Client(timeout=15.0) as client:
-                resp = client.post(url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        text_resp = candidates[0]["content"]["parts"][0]["text"]
-                        parsed = json.loads(text_resp)
-                        narrative = parsed.get("executive_summary", "")
-                        usage = data.get("usageMetadata", {})
-                        p_tokens = usage.get("promptTokenCount", 350)
-                        c_tokens = usage.get("candidatesTokenCount", 120)
-                        log_entry["prompt_tokens"] = p_tokens
-                        log_entry["completion_tokens"] = c_tokens
-                        log_entry["total_tokens"] = p_tokens + c_tokens
-                        log_entry["estimated_cost_usd"] = round((p_tokens * 0.000000075) + (c_tokens * 0.0000003), 6)
-                        success = True
+
+            with httpx.Client(timeout=45.0) as client:
+                for candidate in candidate_models:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent?key={gemini_key}"
+                    resp = client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            text_resp = candidates[0]["content"]["parts"][0]["text"]
+                            parsed = json.loads(text_resp)
+                            narrative = parsed.get("executive_summary", "")
+                            usage = data.get("usageMetadata", {})
+                            p_tokens = usage.get("promptTokenCount", 350)
+                            c_tokens = usage.get("candidatesTokenCount", 120)
+                            log_entry["prompt_tokens"] = p_tokens
+                            log_entry["completion_tokens"] = c_tokens
+                            log_entry["total_tokens"] = p_tokens + c_tokens
+                            log_entry["estimated_cost_usd"] = round((p_tokens * 0.000000075) + (c_tokens * 0.0000003), 6)
+                            log_entry["model_name"] = candidate
+                            success = True
+                            break
+                    else:
+                        logger.warning("Gemini model %s returned status %s: %s", candidate, resp.status_code, resp.text[:120])
         except Exception as e:
             logger.warning("Gemini LLM call failed or timed out: %s", str(e))
             log_entry["status"] = f"LLM_ERROR_{type(e).__name__}"

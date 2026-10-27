@@ -1290,7 +1290,7 @@ export default function App() {
                   {events.length} sismos en memoria
                 </span>
                 <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-bold">
-                  Gemini 1.5 Flash Conectado
+                  Gemini IA Conectado
                 </span>
               </div>
             </div>

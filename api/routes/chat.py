@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "gemini-1.5-flash")
+AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "gemini-3.5-flash-lite")
+CANDIDATE_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"]
 
 
 class ChatMessage(BaseModel):
@@ -147,7 +148,7 @@ def generate_smart_fallback_response(query: str, stats: Dict[str, Any]) -> str:
             return "\n".join(lines)
         return "Actualmente no hay sismos registrados en la base de datos curada."
 
-    if any(k in q for k in ["tsunami", "alerta", "mar", "ola"]):
+    if any(k in q for k in ["tsunami", "tsunamis", "alerta de tsunami", "maremoto"]):
         if tsunamis > 0:
             return (f"⚠️ **Alerta Sísmica Activa:** Se han registrado **{tsunamis} evento(s)** con indicador de alerta de tsunami en el monitoreo. "
                     f"Revisa de inmediato la sección del mapa y el panel de control para coordinar acciones con protección civil.")
@@ -248,19 +249,21 @@ Si la pregunta del usuario es conceptual (ej. cómo funciona la falla de San And
                 "parts": [{"text": user_query}]
             })
 
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{AI_MODEL_NAME}:generateContent?key={api_key}"
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                res = await client.post(url, json={"contents": contents})
-                if res.status_code == 200:
-                    data = res.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        text_part = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        if text_part:
-                            reply_text = text_part.strip()
-                            source = f"gemini ({AI_MODEL_NAME})"
-                else:
-                    logger.warning("Gemini API returned status %s for chat: %s", res.status_code, res.text[:200])
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                for model_candidate in CANDIDATE_MODELS:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_candidate}:generateContent?key={api_key}"
+                    res = await client.post(url, json={"contents": contents})
+                    if res.status_code == 200:
+                        data = res.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            text_part = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                            if text_part:
+                                reply_text = text_part.strip()
+                                source = f"gemini ({model_candidate})"
+                                break
+                    else:
+                        logger.warning("Gemini model %s returned status %s: %s", model_candidate, res.status_code, res.text[:120])
 
         except Exception as e:
             logger.error("Error communicating with Gemini API: %s", e)
