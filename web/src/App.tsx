@@ -905,20 +905,6 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => {
-                setActiveTab('dashboard');
-                setTimeout(() => {
-                  const el = document.getElementById('region-filter-input');
-                  if (el) el.focus();
-                }, 50);
-              }}
-              className="p-1.5 text-slate-500 hover:text-slate-900 rounded-full hover:bg-slate-100 transition"
-              title="Buscar región..."
-            >
-              <Search className="w-3.5 h-3.5" />
-            </button>
-
-            <button
               onClick={() => setActiveTab('reports')}
               className={`p-1.5 rounded-full transition ${
                 activeTab === 'reports' ? 'bg-[#2d4b43] text-white' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
