@@ -3,7 +3,7 @@ SismoWatch Backend - AI Chat & Conversational Assistant Route
 Allows users to chat with the SismoWatch AI Assistant with grounding
 on live PostgreSQL curated seismic data and statistical anomaly baselines.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
@@ -47,6 +47,10 @@ def get_live_seismic_context() -> Dict[str, Any]:
         "max_magnitude": 0.0,
         "avg_magnitude": 0.0,
         "tsunami_alerts": 0,
+        "events_24h": 0,
+        "max_mag_24h": 0.0,
+        "avg_mag_24h": 0.0,
+        "tsunami_24h": 0,
         "latest_events": [],
         "oldest_event": {},
         "top_events": [],
@@ -72,6 +76,24 @@ def get_live_seismic_context() -> Dict[str, Any]:
                 stats["max_magnitude"] = float(row["max_mag"])
                 stats["avg_magnitude"] = float(row["avg_mag"])
                 stats["tsunami_alerts"] = int(row["tsunami_count"])
+
+            # 1b. Last 24 Hours Metrics (Real-time live window)
+            cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as count_24h,
+                    COALESCE(MAX(magnitude), 0.0) as max_mag_24h,
+                    COALESCE(ROUND(AVG(magnitude)::numeric, 2), 0.0) as avg_mag_24h,
+                    COALESCE(SUM(tsunami), 0) as tsunami_count_24h
+                FROM curated.earthquakes
+                WHERE event_time >= %s;
+            """, (cutoff_24h,))
+            row_24h = cur.fetchone()
+            if row_24h:
+                stats["events_24h"] = int(row_24h["count_24h"])
+                stats["max_mag_24h"] = float(row_24h["max_mag_24h"])
+                stats["avg_mag_24h"] = float(row_24h["avg_mag_24h"])
+                stats["tsunami_24h"] = int(row_24h["tsunami_count_24h"])
 
             # 2. Latest events (chronologically most recent)
             cur.execute("""
@@ -172,6 +194,18 @@ def generate_smart_fallback_response(query: str, stats: Dict[str, Any]) -> str:
     latest_events = stats.get("latest_events", [])
     regions = stats.get("high_activity_regions", [])
     anomalies = stats.get("anomalies", [])
+
+    if any(k in q for k in ["24 hora", "24h", "ultimas 24", "últimas 24", "ultimo dia", "último día", "en 24 horas"]):
+        cnt_24h = stats.get("events_24h", 0)
+        max_24h = stats.get("max_mag_24h", 0.0)
+        avg_24h = stats.get("avg_mag_24h", 0.0)
+        tsu_24h = stats.get("tsunami_24h", 0)
+        return (
+            f"En las **últimas 24 horas** se han registrado **{cnt_24h} sismos** en tiempo real a nivel global en la base de datos de SismoWatch.\n\n"
+            f"- **Magnitud máxima 24h:** `M {max_24h}`\n"
+            f"- **Magnitud promedio 24h:** `M {avg_24h}`\n"
+            f"- **Alertas de tsunami 24h:** `{tsu_24h}`"
+        )
 
     if any(k in q for k in ["ultimo", "último", "reciente", "recientes"]):
         if latest_events:
@@ -290,10 +324,15 @@ Responde de forma clara, ejecutiva, concisa y rigurosamente precisa en español.
 NUNCA inventes números. Basa tus respuestas en los siguientes datos REALES del sistema SismoWatch:
 
 FACTUAL DATA:
-- Total eventos curados en base de datos: {stats.get('total_events')}
-- Magnitud máxima global: {stats.get('max_magnitude')}
-- Magnitud promedio: {stats.get('avg_magnitude')}
-- Alertas de tsunami activas: {stats.get('tsunami_alerts')}
+- SISMOS EN LAS ÚLTIMAS 24 HORAS (EN TIEMPO REAL):
+  * Total sismos 24h: {stats.get('events_24h', 0)}
+  * Magnitud máxima 24h: {stats.get('max_mag_24h', 0.0)}
+  * Magnitud promedio 24h: {stats.get('avg_mag_24h', 0.0)}
+  * Alertas tsunami 24h: {stats.get('tsunami_24h', 0)}
+- Total histórico en base de datos (catálogo de 30 días): {stats.get('total_events')}
+- Magnitud máxima global histórica: {stats.get('max_magnitude')}
+- Magnitud promedio global: {stats.get('avg_magnitude')}
+- Alertas de tsunami activas históricas: {stats.get('tsunami_alerts')}
 - ÚLTIMOS SISMOS REGISTRADOS EN TIEMPO REAL (ordenados del más reciente al más antiguo):
 {json.dumps(stats.get('latest_events', []))}
 - SISMOS HISTÓRICOS DE MAYOR MAGNITUD (ordenados de mayor a menor energía):
@@ -305,6 +344,7 @@ FACTUAL DATA:
 - Anomalías detectadas: {json.dumps(stats.get('anomalies', []))}
 
 INSTRUCCIONES CLAVE DE RESPUESTA:
+- Si el usuario pregunta por los sismos de las 'últimas 24 horas', '24h', 'en el último día' o eventos recientes de 24h, responde con el total exacto de 'SISMOS EN LAS ÚLTIMAS 24 HORAS (EN TIEMPO REAL)' ({stats.get('events_24h', 0)} sismos), citando también la magnitud máxima y promedio de esas 24h.
 - Si el usuario pregunta por el 'último sismo', 'sismo más reciente' o eventos actuales, responde con el primer elemento de 'ÚLTIMOS SISMOS REGISTRADOS EN TIEMPO REAL'.
 - Si el usuario pregunta por el sismo 'más antiguo', 'primer evento registrado' o el inicio del catálogo histórico, responde con el 'EVENTO MÁS ANTIGUO REGISTRADO EN BASE DE DATOS' citando lugar, magnitud, profundidad, fecha/hora y que marca el inicio de la ventana de 30 días.
 - Si pregunta por el sismo 'más fuerte', 'de mayor magnitud' o 'más potente', usa 'SISMOS HISTÓRICOS DE MAYOR MAGNITUD'.
