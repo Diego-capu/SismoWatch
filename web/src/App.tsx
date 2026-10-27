@@ -199,7 +199,7 @@ export default function App() {
   const mapInstanceRef = useRef<any>(null);
   const markersLayerRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
-  const [mapLayerType, setMapLayerType] = useState<'base' | 'satellite' | 'topo'>('base');
+  const [mapLayerType, setMapLayerType] = useState<'osm' | 'satellite' | 'topo' | 'minimal'>('osm');
 
   // Clock tick for UTC indicator
   useEffect(() => {
@@ -407,17 +407,17 @@ export default function App() {
   }, [user]);
 
   // ---------------------------------------------------------------------------
-  // Leaflet Map Initialization & Lifecycle (Official Leaflet.js with Esri Canvas)
+  // Leaflet Map Initialization & Lifecycle (Official Leaflet.js from https://leafletjs.com/)
   // ---------------------------------------------------------------------------
-  const handleLayerSwitch = (type: 'base' | 'satellite' | 'topo') => {
+  const handleLayerSwitch = (type: 'osm' | 'satellite' | 'topo' | 'minimal') => {
     setMapLayerType(type);
     if (!mapInstanceRef.current || typeof L === 'undefined') return;
     if (tileLayerRef.current) {
       mapInstanceRef.current.removeLayer(tileLayerRef.current);
     }
-    let url = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-    let attr = 'Leaflet | &copy; Esri, USGS, NOAA';
-    let maxZoom = 16;
+    let url = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    let attr = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors | Leaflet';
+    let maxZoom = 19;
     if (type === 'satellite') {
       url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
       attr = 'Leaflet | &copy; Esri, Maxar, Earthstar Geographics';
@@ -426,6 +426,10 @@ export default function App() {
       url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}';
       attr = 'Leaflet | &copy; Esri, HERE, Garmin';
       maxZoom = 19;
+    } else if (type === 'minimal') {
+      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+      attr = 'Leaflet | &copy; Esri, USGS, NOAA';
+      maxZoom = 16;
     }
     tileLayerRef.current = L.tileLayer(url, { maxZoom, attribution: attr }).addTo(mapInstanceRef.current);
   };
@@ -445,7 +449,7 @@ export default function App() {
       tileLayerRef.current = null;
     }
 
-    // Inicializa el mapa oficial de Leaflet con Esri Canvas (idéntico a la captura)
+    // Inicializa el mapa oficial de Leaflet (https://leafletjs.com/)
     const map = L.map(mapContainerRef.current, {
       center: [20.0, 0.0],
       zoom: 2,
@@ -455,10 +459,10 @@ export default function App() {
       zoomControl: true,
     });
 
-    const defaultUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-    const defaultAttr = 'Leaflet | &copy; Esri, USGS, NOAA';
+    const defaultUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const defaultAttr = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors | Leaflet';
     const initialTileLayer = L.tileLayer(defaultUrl, {
-      maxZoom: 16,
+      maxZoom: 19,
       attribution: defaultAttr,
     }).addTo(map);
 
@@ -1202,7 +1206,7 @@ export default function App() {
                 <div className="flex items-center space-x-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <h2 className="text-sm font-black text-slate-900 tracking-tight">Mapa Sísmico Global Interactivo</h2>
-                  <span className="text-xs text-slate-400 font-medium">| Vista satelital en tiempo real</span>
+                  <span className="text-xs text-slate-400 font-medium">| Leaflet.js Oficial</span>
                   
                   {/* Live indicator pill */}
                   <div className="flex items-center space-x-1.5 px-2.5 py-0.5 bg-slate-100 border border-slate-200/80 rounded-full text-[11px] font-mono text-slate-600 ml-2">
@@ -1228,7 +1232,7 @@ export default function App() {
                   </div>
                   <div className="flex items-center space-x-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444]"></span>
-                    <span>≥ 6.5</span>
+                    <span>&gt;= 6.5</span>
                   </div>
                 </div>
               </div>
@@ -1242,6 +1246,15 @@ export default function App() {
 
                 {/* Map Layer Switcher Overlay (Top-Right) */}
                 <div className="absolute top-3 right-3 z-[400] flex items-center space-x-1 bg-white/95 backdrop-blur border border-slate-200/90 rounded-xl shadow-xs p-1 text-xs">
+                  <button
+                    onClick={() => handleLayerSwitch('osm')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                      mapLayerType === 'osm' ? 'bg-[#2d4b43] text-white' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    }`}
+                    title="Mapa oficial de Leaflet (OpenStreetMap)"
+                  >
+                    Leaflet (OSM)
+                  </button>
                   <button
                     onClick={() => handleLayerSwitch('satellite')}
                     className={`px-2.5 py-1 rounded-lg font-medium transition ${
@@ -1259,11 +1272,11 @@ export default function App() {
                     Topográfico
                   </button>
                   <button
-                    onClick={() => handleLayerSwitch('base')}
+                    onClick={() => handleLayerSwitch('minimal')}
                     className={`p-1.5 rounded-lg transition ${
-                      mapLayerType === 'base' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-700'
+                      mapLayerType === 'minimal' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-700'
                     }`}
-                    title="Vista Estándar Minimalista"
+                    title="Vista Minimalista (Esri Gray Canvas)"
                   >
                     <Layers className="w-3.5 h-3.5" />
                   </button>
