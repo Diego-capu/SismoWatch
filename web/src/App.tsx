@@ -363,146 +363,127 @@ export default function App() {
   }, [user]);
 
   // ---------------------------------------------------------------------------
-  // Leaflet Map Initialization & Rendering
+  // Leaflet Map Initialization & Lifecycle (Official Leaflet.js standard map)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (activeTab !== 'dashboard' || !mapContainerRef.current || typeof L === 'undefined') return;
 
-    if (!mapInstanceRef.current) {
-      const map = L.map(mapContainerRef.current, {
-        center: [20.0, 0.0],
-        zoom: 2,
-        minZoom: 1,
-        maxZoom: 12,
-        worldCopyJump: true,
-      });
-
-      const cartoApiKey = (import.meta as any).env?.VITE_CARTO_API_KEY || '';
-      const cartoParam = cartoApiKey ? `?api_key=${cartoApiKey}` : '';
-
-      // 1. Carto Positron / Light (Matches the exact light screenshot theme)
-      const lightLayer = L.tileLayer(
-        `https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}{r}.png${cartoParam}`,
-        {
-          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-          subdomains: 'abcd',
-          maxZoom: 19,
-        }
-      );
-
-      // 2. Esri Topographic / World Street Map
-      const streetLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-        {
-          attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
-          maxZoom: 18,
-        }
-      );
-
-      // 3. Esri Global Satellite
-      const satelliteLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        {
-          attribution: '&copy; Esri, USGS, NOAA',
-          maxZoom: 18,
-        }
-      );
-
-      // 4. Carto Dark Matter
-      const darkLayer = L.tileLayer(
-        `https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png${cartoParam}`,
-        {
-          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-          subdomains: 'abcd',
-          maxZoom: 19,
-        }
-      );
-
-      // Set clean light layer by default (as in user screenshot)
-      lightLayer.addTo(map);
-
-      // Interactive Layer Switcher
-      L.control.layers(
-        {
-          'Mapa Claro (Stitch Style)': lightLayer,
-          'Topográfico': streetLayer,
-          'Satélite Global': satelliteLayer,
-          'Modo Oscuro': darkLayer,
-        },
-        {},
-        { position: 'topright' }
-      ).addTo(map);
-
-      markersLayerRef.current = L.layerGroup().addTo(map);
-      mapInstanceRef.current = map;
+    // Destruye cualquier instancia previa para evitar bugs al cambiar de pestaña/vista
+    if (mapInstanceRef.current) {
+      try {
+        mapInstanceRef.current.remove();
+      } catch (e) {
+        // ignore cleanup error
+      }
+      mapInstanceRef.current = null;
+      markersLayerRef.current = null;
     }
 
-    // Refresh markers
-    if (markersLayerRef.current) {
-      markersLayerRef.current.clearLayers();
+    // Inicializa el mapa oficial de Leaflet (https://leafletjs.com/)
+    const map = L.map(mapContainerRef.current, {
+      center: [20.0, 0.0],
+      zoom: 2,
+      minZoom: 1,
+      maxZoom: 19,
+      worldCopyJump: true,
+    });
 
-      events.forEach(q => {
-        if (!q.latitude || !q.longitude) return;
+    // Único mapa estándar oficial de Leaflet.js
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
 
-        let color = '#22c55e'; // Green < 4.0
-        let radius = 5;
-        let severityLabel = 'Menor';
-        let severityClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        let magBadgeClass = 'bg-emerald-500 text-white';
+    const markersLayer = L.layerGroup().addTo(map);
+    markersLayerRef.current = markersLayer;
+    mapInstanceRef.current = map;
 
-        if (q.magnitude >= 6.5) {
-          color = '#ef4444'; // Red >= 6.5
-          radius = 12;
-          severityLabel = 'Crítico';
-          severityClass = 'bg-red-50 text-red-700 border-red-200';
-          magBadgeClass = 'bg-red-500 text-white';
-        } else if (q.magnitude >= 5.0) {
-          color = '#f97316'; // Orange 5.0 - 6.4
-          radius = 8;
-          severityLabel = 'Severo';
-          severityClass = 'bg-orange-50 text-orange-700 border-orange-200';
-          magBadgeClass = 'bg-orange-500 text-white';
-        } else if (q.magnitude >= 4.0) {
-          color = '#eab308'; // Yellow 4.0 - 4.9
-          radius = 6;
-          severityLabel = 'Moderado';
-          severityClass = 'bg-amber-50 text-amber-700 border-amber-200';
-          magBadgeClass = 'bg-amber-500 text-white';
-        }
+    // Recalcula dimensiones para evitar cuadros grises al volver a la vista
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
 
-        const marker = L.circleMarker([q.latitude, q.longitude], {
-          radius: radius,
-          fillColor: color,
-          color: '#ffffff',
-          weight: 1.5,
-          opacity: 0.9,
-          fillOpacity: 0.85,
-        });
+    return () => {
+      clearTimeout(timer);
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.remove();
+        } catch (e) {}
+        mapInstanceRef.current = null;
+        markersLayerRef.current = null;
+      }
+    };
+  }, [activeTab]);
 
-        const popupContent = `
-          <div class="font-sans text-slate-800" style="min-width: 220px;">
-            <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-100">
-              <span class="px-2 py-0.5 rounded text-xs font-bold ${magBadgeClass}">M ${q.magnitude.toFixed(1)}</span>
-              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${severityClass}">${severityLabel}</span>
-            </div>
-            <div class="font-bold text-xs text-slate-900 mb-1 leading-snug">${q.place}</div>
-            <div class="text-[11px] text-slate-500 mb-2">
-              Profundidad: <b>${q.depth_km.toFixed(1)} km</b> • ${new Date(q.event_time).toLocaleTimeString()}
-            </div>
-            <div class="pt-1 flex items-center justify-between">
-              <a href="${q.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${q.id}`}" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center space-x-1">
-                <span>Ver telemetría USGS</span>
-                <span>→</span>
-              </a>
-              ${q.tsunami ? '<span class="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">⚠️ TSUNAMI</span>' : ''}
-            </div>
+  // Actualización de marcadores sísmicos
+  useEffect(() => {
+    if (activeTab !== 'dashboard' || !markersLayerRef.current || !mapInstanceRef.current) return;
+
+    markersLayerRef.current.clearLayers();
+
+    events.forEach(q => {
+      if (!q.latitude || !q.longitude) return;
+
+      let color = '#22c55e'; // Green < 4.0
+      let radius = 5;
+      let severityLabel = 'Menor';
+      let severityClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      let magBadgeClass = 'bg-emerald-500 text-white';
+
+      if (q.magnitude >= 6.5) {
+        color = '#ef4444'; // Red >= 6.5
+        radius = 12;
+        severityLabel = 'Crítico';
+        severityClass = 'bg-red-50 text-red-700 border-red-200';
+        magBadgeClass = 'bg-red-500 text-white';
+      } else if (q.magnitude >= 5.0) {
+        color = '#f97316'; // Orange 5.0 - 6.4
+        radius = 8;
+        severityLabel = 'Severo';
+        severityClass = 'bg-orange-50 text-orange-700 border-orange-200';
+        magBadgeClass = 'bg-orange-500 text-white';
+      } else if (q.magnitude >= 4.0) {
+        color = '#eab308'; // Yellow 4.0 - 4.9
+        radius = 6;
+        severityLabel = 'Moderado';
+        severityClass = 'bg-amber-50 text-amber-700 border-amber-200';
+        magBadgeClass = 'bg-amber-500 text-white';
+      }
+
+      const marker = L.circleMarker([q.latitude, q.longitude], {
+        radius: radius,
+        fillColor: color,
+        color: '#ffffff',
+        weight: 1.5,
+        opacity: 0.9,
+        fillOpacity: 0.85,
+      });
+
+      const popupContent = `
+        <div class="font-sans text-slate-800" style="min-width: 220px;">
+          <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-100">
+            <span class="px-2 py-0.5 rounded text-xs font-bold ${magBadgeClass}">M ${q.magnitude.toFixed(1)}</span>
+            <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${severityClass}">${severityLabel}</span>
           </div>
-        `;
+          <div class="font-bold text-xs text-slate-900 mb-1 leading-snug">${q.place}</div>
+          <div class="text-[11px] text-slate-500 mb-2">
+            Profundidad: <b>${q.depth_km.toFixed(1)} km</b> • ${new Date(q.event_time).toLocaleTimeString()}
+          </div>
+          <div class="pt-1 flex items-center justify-between">
+            <a href="${q.url || `https://earthquake.usgs.gov/earthquakes/eventpage/${q.id}`}" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-blue-600 hover:text-blue-700 inline-flex items-center space-x-1">
+              <span>Ver telemetría USGS</span>
+              <span>→</span>
+            </a>
+            ${q.tsunami ? '<span class="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">⚠️ TSUNAMI</span>' : ''}
+          </div>
+        </div>
+      `;
 
-        marker.bindPopup(popupContent);
-        marker.addTo(markersLayerRef.current);
-      });
-    }
+      marker.bindPopup(popupContent);
+      marker.addTo(markersLayerRef.current);
+    });
+
+    mapInstanceRef.current.invalidateSize();
   }, [activeTab, events]);
 
   // ---------------------------------------------------------------------------
