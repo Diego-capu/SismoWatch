@@ -22,7 +22,7 @@ from auth import (
     verify_password,
 )
 from database import init_db_pool, close_db_pool
-from routes import events, reports, quality
+from routes import events, reports, quality, chat
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("sismowatch-api")
@@ -67,6 +67,7 @@ app.add_middleware(
 app.include_router(events.router)
 app.include_router(reports.router)
 app.include_router(quality.router)
+app.include_router(chat.router)
 
 
 @app.get("/", tags=["health"])

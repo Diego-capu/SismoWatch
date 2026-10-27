@@ -138,6 +138,8 @@ services:
       AIRFLOW_BASE_URL: http://airflow-webserver:8080
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-sismowatch_admin}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-AirflowAdmin2026!Secure}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      AI_MODEL_NAME: ${AI_MODEL_NAME:-gemini-1.5-flash}
     volumes:
       - ./api:/app
     ports:

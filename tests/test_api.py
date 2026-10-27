@@ -125,3 +125,27 @@ def test_admin_access_to_quarantine_audit(client, admin_token):
         assert data["total_records_evaluated"] == 50
         assert data["total_records_discarded"] == 2
         assert data["global_quality_score"] == 96.0
+
+
+def test_chat_endpoint_grounded_response(client, viewer_token):
+    fake_viewer = {"id": 2, "username": "viewer", "role": "viewer"}
+    headers = {"Authorization": f"Bearer {viewer_token}"}
+
+    with patch("auth.get_user_by_username", return_value=fake_viewer), \
+         patch("routes.chat.get_live_seismic_context", return_value={
+             "total_events": 150,
+             "max_magnitude": 6.8,
+             "avg_magnitude": 3.2,
+             "tsunami_alerts": 0,
+             "top_events": [{"place": "Off coast of Chile", "magnitude": 6.8, "region": "Chile", "depth_km": 20, "time": "2026-10-27", "tsunami": False}],
+             "high_activity_regions": [{"region": "Chile", "count": 25, "max_magnitude": 6.8}],
+             "latest_ai_summary": "Actividad moderada en el Pacífico.",
+             "anomalies": []
+         }):
+        response = client.post("/api/chat", json={"message": "¿Cuál fue el sismo más fuerte?"}, headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert "reply" in data
+        assert "6.8" in data["reply"]
+        assert "source" in data
+
